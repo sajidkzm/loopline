@@ -553,6 +553,11 @@
   .account-status { max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink-soft); font-size:12px; }
   .account-btn { border:1px solid var(--border); background:var(--surface); color:var(--ink); border-radius:8px; padding:8px 11px; font-size:13px; font-weight:700; }
   .auth-box { max-width:440px; }
+  .personal-sync-tools { border-top:1px solid var(--border); margin-top:16px; padding-top:14px; }
+  .personal-sync-tools h4 { margin:0 0 8px; font-size:13px; }
+  .personal-sync-tools p { font-size:12px; color:var(--ink-soft); line-height:1.45; margin:6px 0 10px; }
+  .personal-sync-actions { display:flex; flex-wrap:wrap; gap:8px; }
+  .personal-sync-actions button { font-size:12px; }
   .workspace-tools { border-top:1px solid var(--border); margin-top:16px; padding-top:14px; }
   .workspace-tools h4 { margin:0 0 8px; font-size:13px; }
   .workspace-tools input { margin-bottom:8px; }
@@ -750,6 +755,16 @@
     </div>
     <p class="auth-message" id="authMessage" role="status" aria-live="polite"></p>
     <p class="auth-note">Email sign-up may require you to confirm your email. Signing in does not upload or overwrite your existing browser data.</p>
+    <div class="personal-sync-tools" id="personalSyncTools" hidden>
+      <h4>Personal cloud sync</h4>
+      <p id="personalSyncMessage">Checking your personal data…</p>
+      <div class="personal-sync-actions">
+        <button class="btn accent" id="useCloudDataBtn" type="button" hidden>Use cloud data</button>
+        <button class="btn accent" id="uploadLocalDataBtn" type="button" hidden>Upload this browser's data</button>
+        <button class="btn ghost" id="enableEmptyCloudBtn" type="button" hidden>Enable empty cloud sync</button>
+        <button class="btn ghost" id="keepLocalDataBtn" type="button" hidden>Keep local only</button>
+      </div>
+    </div>
     <div class="workspace-tools" id="workspaceTools" hidden>
       <h4>Team workspaces</h4>
       <input type="text" id="workspaceNameInput" maxlength="80" placeholder="New workspace name">
@@ -848,6 +863,7 @@
       status.title = currentUser.email || "";
       button.textContent = "Sign out";
       refreshWorkspaceList();
+      preparePersonalCloudSync(currentUser);
     } else {
       status.textContent = "Local mode";
       status.title = "Your data is currently stored in this browser";
@@ -905,6 +921,9 @@
     if (!supabaseClient) return;
     var result = await supabaseClient.auth.signOut();
     if (result.error) { showToast("Couldn't sign out: " + result.error.message); return; }
+    personalCloudEnabled = false;
+    personalSyncUserId = null;
+    if (personalCloudSaveTimer) clearTimeout(personalCloudSaveTimer);
     showToast("Signed out");
   }
 
@@ -1036,6 +1055,10 @@
   }
 
   var state = loadState();
+  var personalCloudEnabled = false;
+  var personalSyncUserId = null;
+  var personalSyncRequest = 0;
+  var personalCloudSaveTimer = null;
 
   function defaultState() {
     return { tasks: [], reminders: [], rewards: [], activityDates: [], claimedBadges: [] };
@@ -1059,8 +1082,203 @@
     } catch (e) {
       console.error("Loopline: failed to save state", e);
       showToast("Couldn't save — storage might be full.");
+      return;
+    }
+    if (personalCloudEnabled && currentUser && currentUser.id === personalSyncUserId) {
+      schedulePersonalCloudSave();
     }
   }
+
+  function stateHasContent(value) {
+    var v = value || defaultState();
+    return ["tasks","reminders","rewards","activityDates","claimedBadges"].some(function(key) {
+      return Array.isArray(v[key]) && v[key].length > 0;
+    });
+  }
+
+  function normalizeState(value) {
+    return Object.assign(defaultState(), value || {});
+  }
+
+  function setPersonalSyncMessage(message) {
+    var el = document.getElementById("personalSyncMessage");
+    if (el) el.textContent = message || "";
+  }
+
+  function showPersonalSyncChoices(which) {
+    ["useCloudDataBtn","uploadLocalDataBtn","enableEmptyCloudBtn","keepLocalDataBtn"].forEach(function(id) {
+      document.getElementById(id).hidden = true;
+    });
+    (which || []).forEach(function(id) { document.getElementById(id).hidden = false; });
+  }
+
+  async function preparePersonalCloudSync(user) {
+    var panel = document.getElementById("personalSyncTools");
+    if (!panel) return;
+    if (!user || !supabaseClient) {
+      personalSyncRequest++;
+      personalCloudEnabled = false;
+      personalSyncUserId = null;
+      if (personalCloudSaveTimer) clearTimeout(personalCloudSaveTimer);
+      panel.hidden = true;
+      return;
+    }
+    if (personalSyncUserId === user.id && (personalCloudEnabled || panel.dataset.checked === "yes")) return;
+    personalCloudEnabled = false;
+    personalSyncUserId = user.id;
+    panel.hidden = false;
+    panel.dataset.checked = "loading";
+    setPersonalSyncMessage("Checking your browser data and private cloud record…");
+    showPersonalSyncChoices([]);
+    var requestId = ++personalSyncRequest;
+    try {
+      var result = await supabaseClient
+        .from("loopline_personal_state")
+        .select("state, updated_at")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (result.error) throw result.error;
+      if (requestId !== personalSyncRequest || !currentUser || currentUser.id !== user.id) return;
+      var localHas = stateHasContent(state);
+      var cloudState = normalizeState(result.data ? result.data.state : null);
+      var cloudHas = stateHasContent(cloudState);
+      panel.dataset.checked = "yes";
+      if (cloudHas) {
+        setPersonalSyncMessage("A private cloud copy exists (" + cloudState.tasks.length + " tasks and " + cloudState.reminders.length + " reminders). You can load it. Your current browser data will first be backed up on this device.");
+        showPersonalSyncChoices(localHas ? ["useCloudDataBtn","keepLocalDataBtn"] : ["useCloudDataBtn"]);
+      } else if (localHas) {
+        setPersonalSyncMessage("This browser has " + state.tasks.length + " tasks and " + state.reminders.length + " reminders, but your cloud record is empty. Upload only if this is the data you want attached to this account.");
+        showPersonalSyncChoices(["uploadLocalDataBtn","keepLocalDataBtn"]);
+      } else {
+        setPersonalSyncMessage("No tasks or reminders were found in either place. You can enable private cloud sync for this account.");
+        showPersonalSyncChoices(["enableEmptyCloudBtn","keepLocalDataBtn"]);
+      }
+    } catch (error) {
+      if (requestId !== personalSyncRequest) return;
+      panel.dataset.checked = "no";
+      setPersonalSyncMessage("Couldn't check cloud data: " + error.message);
+      showPersonalSyncChoices(["keepLocalDataBtn"]);
+    }
+  }
+
+  function backupCurrentLocalState(userId) {
+    try {
+      localStorage.setItem(LS_KEY + "_backup_" + userId, JSON.stringify(state));
+    } catch (e) {
+      console.error("Loopline: local backup failed", e);
+      throw new Error("Couldn't create a safety backup on this device. No data was changed.");
+    }
+  }
+
+  async function activatePersonalCloudSync(nextState, successMessage) {
+    if (!currentUser || !supabaseClient) return;
+    var userId = currentUser.id;
+    personalCloudEnabled = false;
+    try {
+      var payload = normalizeState(nextState);
+      var result = await supabaseClient
+        .from("loopline_personal_state")
+        .upsert({ user_id: userId, state: payload, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+      if (result.error) throw result.error;
+      if (!currentUser || currentUser.id !== userId) return;
+      state = payload;
+      localStorage.setItem(LS_KEY, JSON.stringify(state));
+      personalSyncUserId = userId;
+      personalCloudEnabled = true;
+      setPersonalSyncMessage(successMessage);
+      showPersonalSyncChoices([]);
+      document.getElementById("personalSyncTools").dataset.checked = "yes";
+      renderBoard();
+      renderReminders();
+      renderScorecard();
+      renderTodayBanner();
+    } catch (error) {
+      personalCloudEnabled = false;
+      setPersonalSyncMessage("Cloud sync wasn't enabled: " + error.message);
+      showPersonalSyncChoices(["keepLocalDataBtn"]);
+    }
+  }
+
+  async function useCloudPersonalData() {
+    if (!currentUser || !supabaseClient) return;
+    var userId = currentUser.id;
+    setPersonalSyncMessage("Loading your private cloud data…");
+    showPersonalSyncChoices([]);
+    try {
+      var result = await supabaseClient
+        .from("loopline_personal_state")
+        .select("state")
+        .eq("user_id", userId)
+        .single();
+      if (result.error) throw result.error;
+      backupCurrentLocalState(userId);
+      await activatePersonalCloudSync(result.data.state, "Private cloud data loaded. Changes will now sync to this account.");
+    } catch (error) {
+      setPersonalSyncMessage("Couldn't load cloud data: " + error.message);
+      showPersonalSyncChoices(["keepLocalDataBtn"]);
+    }
+  }
+
+  async function uploadLocalPersonalData() {
+    if (!currentUser || !supabaseClient) return;
+    setPersonalSyncMessage("Checking that the cloud record is still empty…");
+    showPersonalSyncChoices([]);
+    try {
+      var check = await supabaseClient
+        .from("loopline_personal_state")
+        .select("state")
+        .eq("user_id", currentUser.id)
+        .single();
+      if (check.error) throw check.error;
+      if (stateHasContent(check.data.state)) {
+        setPersonalSyncMessage("The cloud record is no longer empty. To avoid overwriting it, upload was stopped. Choose Use cloud data after refreshing.");
+        showPersonalSyncChoices(["keepLocalDataBtn"]);
+        return;
+      }
+      var localCopy = normalizeState(state);
+      await activatePersonalCloudSync(localCopy, "Your browser data was uploaded. Personal cloud sync is now active.");
+    } catch (error) {
+      setPersonalSyncMessage("Couldn't upload browser data: " + error.message);
+      showPersonalSyncChoices(["keepLocalDataBtn"]);
+    }
+  }
+
+  async function enableEmptyPersonalCloud() {
+    if (stateHasContent(state)) {
+      setPersonalSyncMessage("Your browser now contains data. Please choose whether to upload it instead.");
+      showPersonalSyncChoices(["uploadLocalDataBtn","keepLocalDataBtn"]);
+      return;
+    }
+    await activatePersonalCloudSync(defaultState(), "Private cloud sync is active for this account.");
+  }
+
+  function schedulePersonalCloudSave() {
+    if (personalCloudSaveTimer) clearTimeout(personalCloudSaveTimer);
+    personalCloudSaveTimer = setTimeout(async function() {
+      if (!personalCloudEnabled || !currentUser || currentUser.id !== personalSyncUserId) return;
+      var userId = currentUser.id;
+      var snapshot = JSON.parse(JSON.stringify(state));
+      var result = await supabaseClient
+        .from("loopline_personal_state")
+        .upsert({ user_id: userId, state: snapshot, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+      if (result.error) {
+        setPersonalSyncMessage("Saved on this device, but cloud sync failed: " + result.error.message);
+        console.error("Loopline personal cloud save:", result.error);
+      } else {
+        setPersonalSyncMessage("Private cloud sync is up to date.");
+      }
+    }, 700);
+  }
+
+  document.getElementById("useCloudDataBtn").addEventListener("click", useCloudPersonalData);
+  document.getElementById("uploadLocalDataBtn").addEventListener("click", uploadLocalPersonalData);
+  document.getElementById("enableEmptyCloudBtn").addEventListener("click", enableEmptyPersonalCloud);
+  document.getElementById("keepLocalDataBtn").addEventListener("click", function() {
+    personalCloudEnabled = false;
+    setPersonalSyncMessage("Cloud sync is off. Your data remains on this browser.");
+    showPersonalSyncChoices([]);
+    document.getElementById("personalSyncTools").dataset.checked = "yes";
+  });
 
   function uid() {
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
