@@ -1059,6 +1059,7 @@
   var personalSyncUserId = null;
   var personalSyncRequest = 0;
   var personalCloudSaveTimer = null;
+  var personalRealtimeChannel = null;
 
   function defaultState() {
     return { tasks: [], reminders: [], rewards: [], activityDates: [], claimedBadges: [] };
@@ -1087,6 +1088,49 @@
     if (personalCloudEnabled && currentUser && currentUser.id === personalSyncUserId) {
       schedulePersonalCloudSave();
     }
+  }
+
+  function stopPersonalRealtime() {
+    if (personalRealtimeChannel && supabaseClient) {
+      supabaseClient.removeChannel(personalRealtimeChannel);
+    }
+    personalRealtimeChannel = null;
+  }
+
+  function startPersonalRealtime(userId) {
+    if (!supabaseClient || !userId || !personalCloudEnabled || personalSyncUserId !== userId) return;
+    stopPersonalRealtime();
+    personalRealtimeChannel = supabaseClient
+      .channel("loopline-personal-" + userId)
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: "loopline_personal_state",
+        filter: "user_id=eq." + userId
+      }, function(payload) {
+        if (!personalCloudEnabled || !currentUser || currentUser.id !== userId || personalSyncUserId !== userId) return;
+        if (personalCloudSaveTimer) return;
+        var incoming = payload && payload.new && payload.new.state;
+        if (!incoming || typeof incoming !== "object") return;
+        var normalized = normalizeState(incoming);
+        if (JSON.stringify(normalized) === JSON.stringify(state)) return;
+        state = normalized;
+        try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {
+          console.error("Loopline: couldn't cache realtime personal data", e);
+        }
+        renderBoard();
+        renderReminders();
+        renderScorecard();
+        renderTodayBanner();
+        setPersonalSyncMessage("Updated from another device.");
+      })
+      .subscribe(function(status) {
+        if (status === "SUBSCRIBED" && personalCloudEnabled && currentUser && currentUser.id === userId) {
+          setPersonalSyncMessage("Private cloud sync is active on this device.");
+        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          setPersonalSyncMessage("Cloud sync is saved, but live updates are temporarily unavailable.");
+        }
+      });
   }
 
   function stateHasContent(value) {
@@ -1119,6 +1163,7 @@
       personalSyncRequest++;
       personalCloudEnabled = false;
       personalSyncUserId = null;
+      stopPersonalRealtime();
       if (personalCloudSaveTimer) clearTimeout(personalCloudSaveTimer);
       panel.hidden = true;
       return;
@@ -1185,6 +1230,7 @@
       localStorage.setItem(LS_KEY, JSON.stringify(state));
       personalSyncUserId = userId;
       personalCloudEnabled = true;
+      startPersonalRealtime(userId);
       setPersonalSyncMessage(successMessage);
       showPersonalSyncChoices([]);
       document.getElementById("personalSyncTools").dataset.checked = "yes";
@@ -1275,6 +1321,7 @@
   document.getElementById("enableEmptyCloudBtn").addEventListener("click", enableEmptyPersonalCloud);
   document.getElementById("keepLocalDataBtn").addEventListener("click", function() {
     personalCloudEnabled = false;
+    stopPersonalRealtime();
     setPersonalSyncMessage("Cloud sync is off. Your data remains on this browser.");
     showPersonalSyncChoices([]);
     document.getElementById("personalSyncTools").dataset.checked = "yes";
