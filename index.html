@@ -564,6 +564,7 @@
   .workspace-list { margin:10px 0 0; padding:0; list-style:none; }
   .workspace-list li { padding:8px 10px; border:1px solid var(--border); border-radius:8px; margin-top:6px; font-size:12px; display:flex; justify-content:space-between; gap:8px; }
   .workspace-list small { color:var(--ink-faint); }
+  .workspace-open-btn { border:1px solid var(--border); background:var(--surface-2); color:var(--ink); border-radius:7px; padding:5px 9px; font-size:11px; cursor:pointer; }
   .auth-box input { width:100%; border:1px solid var(--border); border-radius:8px; padding:11px 12px; margin:0 0 10px; background:var(--surface-2); color:var(--ink); font-size:14px; }
   .auth-box .auth-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
   .auth-box .auth-message { min-height:18px; margin:10px 0 0; color:var(--ink-soft); font-size:12.5px; line-height:1.4; }
@@ -773,7 +774,8 @@
       <button class="btn ghost" id="joinWorkspaceBtn" type="button">Join with code</button>
       <p class="auth-message" id="workspaceMessage" role="status" aria-live="polite"></p>
       <ul class="workspace-list" id="workspaceList"></ul>
-      <p class="auth-note">Workspace setup is available. Task and reminder cloud syncing is not enabled yet.</p>
+      <button class="btn ghost" id="personalModeBtn" type="button" style="margin-top:10px;width:100%;">Return to personal data</button>
+      <p class="auth-note">Open a workspace to view and edit its shared tasks and reminders. Personal data stays separate.</p>
     </div>
     <div class="modal-actions" style="margin-top:14px;">
       <button class="cancel" id="authCloseBtn">Close</button>
@@ -870,7 +872,16 @@
       button.textContent = "Sign in";
       var toolsEl = document.getElementById("workspaceTools");
       if (toolsEl) toolsEl.hidden = true;
+      if (activeWorkspaceId) {
+        workspaceLoadRequest++;
+        stopSharedRealtime();
+        activeWorkspaceId = null;
+        activeWorkspaceName = null;
+        state = loadState();
+        renderAllViews();
+      }
     }
+    renderCurrentDataMode();
   }
 
   async function handleEmailSignIn() {
@@ -919,10 +930,23 @@
 
   async function handleSignOut() {
     if (!supabaseClient) return;
+    if (sharedCloudSaveTimer) {
+      clearTimeout(sharedCloudSaveTimer);
+      sharedCloudSaveTimer = null;
+      var saved = await saveSharedWorkspaceNow();
+      if (!saved) { showToast("Please retry sign out after team changes are saved."); return; }
+    }
     var result = await supabaseClient.auth.signOut();
     if (result.error) { showToast("Couldn't sign out: " + result.error.message); return; }
     personalCloudEnabled = false;
     personalSyncUserId = null;
+    stopPersonalRealtime();
+    stopSharedRealtime();
+    activeWorkspaceId = null;
+    activeWorkspaceName = null;
+    state = loadState();
+    renderAllViews();
+    renderCurrentDataMode();
     if (personalCloudSaveTimer) clearTimeout(personalCloudSaveTimer);
     showToast("Signed out");
   }
@@ -965,12 +989,21 @@
     workspaces.data.forEach(function(w) {
       var membership = memberships.data.find(function(m) { return m.workspace_id === w.id; });
       var item = document.createElement("li");
+      var info = document.createElement("span");
       var name = document.createElement("span");
       name.textContent = w.name;
       var role = document.createElement("small");
       role.textContent = membership ? membership.role : "member";
-      item.appendChild(name);
-      item.appendChild(role);
+      info.appendChild(name);
+      info.appendChild(document.createElement("br"));
+      info.appendChild(role);
+      var open = document.createElement("button");
+      open.type = "button";
+      open.className = "workspace-open-btn";
+      open.textContent = activeWorkspaceId === w.id ? "Open" : "Open";
+      open.addEventListener("click", function() { openWorkspace(w.id, w.name); });
+      item.appendChild(info);
+      item.appendChild(open);
       listEl.appendChild(item);
     });
   }
@@ -1019,8 +1052,142 @@
     }
   }
 
+  function stopSharedRealtime() {
+    if (sharedRealtimeChannel && supabaseClient) supabaseClient.removeChannel(sharedRealtimeChannel);
+    sharedRealtimeChannel = null;
+  }
+
+  function renderCurrentDataMode() {
+    var status = document.getElementById("accountStatus");
+    if (activeWorkspaceId) {
+      status.textContent = "Team · " + activeWorkspaceName;
+      status.title = "You are viewing shared workspace data";
+    } else if (currentUser) {
+      status.textContent = currentUser.email || "Signed in";
+      status.title = currentUser.email || "";
+    } else {
+      status.textContent = "Local mode";
+      status.title = "Your data is stored in this browser";
+    }
+  }
+
+  function renderAllViews() {
+    renderBoard();
+    renderReminders();
+    renderScorecard();
+    renderTodayBanner();
+  }
+
+  async function saveSharedWorkspaceNow() {
+    if (!activeWorkspaceId || !currentUser || !supabaseClient) return;
+    var workspaceId = activeWorkspaceId;
+    var snapshot = JSON.parse(JSON.stringify(state));
+    var result = await supabaseClient
+      .from("loopline_shared_state")
+      .upsert({ workspace_id: workspaceId, state: snapshot, updated_by: currentUser.id, updated_at: new Date().toISOString() }, { onConflict: "workspace_id" });
+    if (result.error) {
+      setWorkspaceMessage("Changes are on screen, but team cloud save failed: " + result.error.message);
+      console.error("Loopline shared save:", result.error);
+      return false;
+    }
+    if (activeWorkspaceId === workspaceId) setWorkspaceMessage("Workspace changes saved.");
+    return true;
+  }
+
+  function scheduleSharedCloudSave() {
+    if (sharedCloudSaveTimer) clearTimeout(sharedCloudSaveTimer);
+    sharedCloudSaveTimer = setTimeout(function() {
+      sharedCloudSaveTimer = null;
+      saveSharedWorkspaceNow();
+    }, 700);
+  }
+
+  function startSharedRealtime(workspaceId) {
+    stopSharedRealtime();
+    if (!supabaseClient || !workspaceId) return;
+    sharedRealtimeChannel = supabaseClient
+      .channel("loopline-shared-" + workspaceId)
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: "loopline_shared_state",
+        filter: "workspace_id=eq." + workspaceId
+      }, function(payload) {
+        if (activeWorkspaceId !== workspaceId || !currentUser || sharedCloudSaveTimer) return;
+        var incoming = payload && payload.new && payload.new.state;
+        if (!incoming || typeof incoming !== "object") return;
+        var nextState = normalizeState(incoming);
+        if (JSON.stringify(nextState) === JSON.stringify(state)) return;
+        state = nextState;
+        renderAllViews();
+        setWorkspaceMessage("Workspace updated by a teammate.");
+      })
+      .subscribe(function(status) {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          setWorkspaceMessage("Team data is saved, but live updates are temporarily unavailable.");
+        }
+      });
+  }
+
+  async function openWorkspace(workspaceId, workspaceName) {
+    if (!currentUser || !supabaseClient) { setWorkspaceMessage("Sign in to open a workspace."); return; }
+    if (activeWorkspaceId === workspaceId) { closeAuthModal(); return; }
+    var requestId = ++workspaceLoadRequest;
+    if (sharedCloudSaveTimer) {
+      clearTimeout(sharedCloudSaveTimer);
+      sharedCloudSaveTimer = null;
+      var saved = await saveSharedWorkspaceNow();
+      if (!saved) { setWorkspaceMessage("Couldn't switch because the previous workspace has unsaved changes."); return; }
+    }
+    setWorkspaceMessage("Loading shared workspace…");
+    var result = await supabaseClient
+      .from("loopline_shared_state")
+      .select("state")
+      .eq("workspace_id", workspaceId)
+      .maybeSingle();
+    if (result.error) {
+      setWorkspaceMessage("Couldn't open workspace: " + result.error.message);
+      return;
+    }
+    if (requestId !== workspaceLoadRequest || !currentUser) return;
+    if (personalCloudSaveTimer) {
+      clearTimeout(personalCloudSaveTimer);
+      personalCloudSaveTimer = null;
+    }
+    stopPersonalRealtime();
+    stopSharedRealtime();
+    activeWorkspaceId = workspaceId;
+    activeWorkspaceName = workspaceName;
+    state = normalizeState(result.data ? result.data.state : null);
+    renderCurrentDataMode();
+    renderAllViews();
+    startSharedRealtime(workspaceId);
+    closeAuthModal();
+    showToast("Opened " + workspaceName);
+  }
+
+  async function returnToPersonalMode() {
+    if (sharedCloudSaveTimer) {
+      clearTimeout(sharedCloudSaveTimer);
+      sharedCloudSaveTimer = null;
+      var saved = await saveSharedWorkspaceNow();
+      if (!saved) return;
+    }
+    workspaceLoadRequest++;
+    stopSharedRealtime();
+    activeWorkspaceId = null;
+    activeWorkspaceName = null;
+    state = loadState();
+    renderCurrentDataMode();
+    renderAllViews();
+    if (personalCloudEnabled && currentUser && currentUser.id === personalSyncUserId) startPersonalRealtime(currentUser.id);
+    setWorkspaceMessage("Back in your personal data.");
+    closeAuthModal();
+  }
+
   document.getElementById("createWorkspaceBtn").addEventListener("click", handleCreateWorkspace);
   document.getElementById("joinWorkspaceBtn").addEventListener("click", handleJoinWorkspace);
+  document.getElementById("personalModeBtn").addEventListener("click", returnToPersonalMode);
 
   document.getElementById("workspaceBtn").addEventListener("click", openAuthModal);
   document.getElementById("accountBtn").addEventListener("click", function() {
@@ -1060,6 +1227,11 @@
   var personalSyncRequest = 0;
   var personalCloudSaveTimer = null;
   var personalRealtimeChannel = null;
+  var activeWorkspaceId = null;
+  var activeWorkspaceName = null;
+  var sharedCloudSaveTimer = null;
+  var sharedRealtimeChannel = null;
+  var workspaceLoadRequest = 0;
 
   function defaultState() {
     return { tasks: [], reminders: [], rewards: [], activityDates: [], claimedBadges: [] };
@@ -1078,6 +1250,10 @@
   }
 
   function saveState() {
+    if (activeWorkspaceId) {
+      scheduleSharedCloudSave();
+      return;
+    }
     try {
       localStorage.setItem(LS_KEY, JSON.stringify(state));
     } catch (e) {
@@ -1108,7 +1284,7 @@
         table: "loopline_personal_state",
         filter: "user_id=eq." + userId
       }, function(payload) {
-        if (!personalCloudEnabled || !currentUser || currentUser.id !== userId || personalSyncUserId !== userId) return;
+        if (!personalCloudEnabled || activeWorkspaceId || !currentUser || currentUser.id !== userId || personalSyncUserId !== userId) return;
         if (personalCloudSaveTimer) return;
         var incoming = payload && payload.new && payload.new.state;
         if (!incoming || typeof incoming !== "object") return;
@@ -1301,7 +1477,7 @@
   function schedulePersonalCloudSave() {
     if (personalCloudSaveTimer) clearTimeout(personalCloudSaveTimer);
     personalCloudSaveTimer = setTimeout(async function() {
-      if (!personalCloudEnabled || !currentUser || currentUser.id !== personalSyncUserId) return;
+      if (!personalCloudEnabled || activeWorkspaceId || !currentUser || currentUser.id !== personalSyncUserId) return;
       var userId = currentUser.id;
       var snapshot = JSON.parse(JSON.stringify(state));
       var result = await supabaseClient
