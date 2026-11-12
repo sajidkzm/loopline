@@ -553,6 +553,12 @@
   .account-status { max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink-soft); font-size:12px; }
   .account-btn { border:1px solid var(--border); background:var(--surface); color:var(--ink); border-radius:8px; padding:8px 11px; font-size:13px; font-weight:700; }
   .auth-box { max-width:440px; }
+  .workspace-tools { border-top:1px solid var(--border); margin-top:16px; padding-top:14px; }
+  .workspace-tools h4 { margin:0 0 8px; font-size:13px; }
+  .workspace-tools input { margin-bottom:8px; }
+  .workspace-list { margin:10px 0 0; padding:0; list-style:none; }
+  .workspace-list li { padding:8px 10px; border:1px solid var(--border); border-radius:8px; margin-top:6px; font-size:12px; display:flex; justify-content:space-between; gap:8px; }
+  .workspace-list small { color:var(--ink-faint); }
   .auth-box input { width:100%; border:1px solid var(--border); border-radius:8px; padding:11px 12px; margin:0 0 10px; background:var(--surface-2); color:var(--ink); font-size:14px; }
   .auth-box .auth-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
   .auth-box .auth-message { min-height:18px; margin:10px 0 0; color:var(--ink-soft); font-size:12.5px; line-height:1.4; }
@@ -742,7 +748,17 @@
       <button class="btn ghost" id="googleSignInBtn">Continue with Google</button>
     </div>
     <p class="auth-message" id="authMessage" role="status" aria-live="polite"></p>
-    <p class="auth-note">Email sign-up may require you to confirm your email. Cloud backup and team sharing will be connected in a later step.</p>
+    <p class="auth-note">Email sign-up may require you to confirm your email. Signing in does not upload or overwrite your existing browser data.</p>
+    <div class="workspace-tools" id="workspaceTools" hidden>
+      <h4>Team workspaces</h4>
+      <input type="text" id="workspaceNameInput" maxlength="80" placeholder="New workspace name">
+      <button class="btn accent" id="createWorkspaceBtn" type="button">Create workspace</button>
+      <input type="text" id="workspaceInviteInput" maxlength="100" placeholder="Invitation code">
+      <button class="btn ghost" id="joinWorkspaceBtn" type="button">Join with code</button>
+      <p class="auth-message" id="workspaceMessage" role="status" aria-live="polite"></p>
+      <ul class="workspace-list" id="workspaceList"></ul>
+      <p class="auth-note">Workspace setup is available. Task and reminder cloud syncing is not enabled yet.</p>
+    </div>
     <div class="modal-actions" style="margin-top:14px;">
       <button class="cancel" id="authCloseBtn">Close</button>
     </div>
@@ -829,10 +845,13 @@
       status.textContent = currentUser.email || "Signed in";
       status.title = currentUser.email || "";
       button.textContent = "Sign out";
+      refreshWorkspaceList();
     } else {
       status.textContent = "Local mode";
       status.title = "Your data is currently stored in this browser";
       button.textContent = "Sign in";
+      var toolsEl = document.getElementById("workspaceTools");
+      if (toolsEl) toolsEl.hidden = true;
     }
   }
 
@@ -886,6 +905,101 @@
     if (result.error) { showToast("Couldn't sign out: " + result.error.message); return; }
     showToast("Signed out");
   }
+
+  function setWorkspaceMessage(message) {
+    var el = document.getElementById("workspaceMessage");
+    if (el) el.textContent = message || "";
+  }
+
+  async function refreshWorkspaceList() {
+    var toolsEl = document.getElementById("workspaceTools");
+    var listEl = document.getElementById("workspaceList");
+    if (!toolsEl || !listEl) return;
+    toolsEl.hidden = !currentUser;
+    listEl.innerHTML = "";
+    if (!currentUser || !supabaseClient) return;
+
+    var memberships = await supabaseClient
+      .from("loopline_workspace_members")
+      .select("workspace_id, role")
+      .eq("user_id", currentUser.id);
+    if (memberships.error) {
+      setWorkspaceMessage("Couldn't load workspaces: " + memberships.error.message);
+      return;
+    }
+    var ids = memberships.data.map(function(m) { return m.workspace_id; });
+    if (!ids.length) {
+      listEl.innerHTML = '<li><span>No workspaces yet</span></li>';
+      return;
+    }
+    var workspaces = await supabaseClient
+      .from("loopline_workspaces")
+      .select("id, name")
+      .in("id", ids)
+      .order("name");
+    if (workspaces.error) {
+      setWorkspaceMessage("Couldn't load workspace names: " + workspaces.error.message);
+      return;
+    }
+    workspaces.data.forEach(function(w) {
+      var membership = memberships.data.find(function(m) { return m.workspace_id === w.id; });
+      var item = document.createElement("li");
+      var name = document.createElement("span");
+      name.textContent = w.name;
+      var role = document.createElement("small");
+      role.textContent = membership ? membership.role : "member";
+      item.appendChild(name);
+      item.appendChild(role);
+      listEl.appendChild(item);
+    });
+  }
+
+  async function handleCreateWorkspace() {
+    if (!currentUser || !supabaseClient) { setAuthMessage("Sign in first."); return; }
+    var name = document.getElementById("workspaceNameInput").value.trim();
+    if (!name) { setWorkspaceMessage("Enter a workspace name."); return; }
+    var button = document.getElementById("createWorkspaceBtn");
+    button.disabled = true;
+    setWorkspaceMessage("Creating workspace…");
+    try {
+      var result = await supabaseClient.rpc("loopline_create_workspace", { p_name: name });
+      if (result.error) throw result.error;
+      var created = result.data && result.data[0];
+      if (!created) throw new Error("Workspace was created, but no details were returned.");
+      document.getElementById("workspaceNameInput").value = "";
+      setWorkspaceMessage("Workspace created. Share this invitation code with teammates: " + created.invite_code);
+      await refreshWorkspaceList();
+    } catch (error) {
+      setWorkspaceMessage("Couldn't create workspace: " + error.message);
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function handleJoinWorkspace() {
+    if (!currentUser || !supabaseClient) { setAuthMessage("Sign in first."); return; }
+    var code = document.getElementById("workspaceInviteInput").value.trim();
+    if (!code) { setWorkspaceMessage("Enter an invitation code."); return; }
+    var button = document.getElementById("joinWorkspaceBtn");
+    button.disabled = true;
+    setWorkspaceMessage("Joining workspace…");
+    try {
+      var result = await supabaseClient.rpc("loopline_join_workspace", { p_invite_code: code });
+      if (result.error) throw result.error;
+      var joined = result.data && result.data[0];
+      if (!joined) throw new Error("No workspace was returned. Check the invitation code.");
+      document.getElementById("workspaceInviteInput").value = "";
+      setWorkspaceMessage("Joined " + joined.workspace_name + " successfully.");
+      await refreshWorkspaceList();
+    } catch (error) {
+      setWorkspaceMessage("Couldn't join workspace: " + error.message);
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  document.getElementById("createWorkspaceBtn").addEventListener("click", handleCreateWorkspace);
+  document.getElementById("joinWorkspaceBtn").addEventListener("click", handleJoinWorkspace);
 
   document.getElementById("accountBtn").addEventListener("click", function() {
     if (currentUser) handleSignOut();
