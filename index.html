@@ -547,6 +547,18 @@
   .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
   .modal-actions button.cancel { background: transparent; border: 1px solid var(--border); color: var(--ink-soft); border-radius: 8px; padding: 9px 16px; font-size: 14px; font-weight: 700; }
   .modal-actions button.confirm-danger { background: var(--stage-followup); color: #fff; border: none; border-radius: 8px; padding: 9px 16px; font-size: 14px; font-weight: 700; }
+
+  /* Account and authentication */
+  .account-area { display:flex; align-items:center; gap:8px; }
+  .account-status { max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink-soft); font-size:12px; }
+  .account-btn { border:1px solid var(--border); background:var(--surface); color:var(--ink); border-radius:8px; padding:8px 11px; font-size:13px; font-weight:700; }
+  .auth-box { max-width:440px; }
+  .auth-box input { width:100%; border:1px solid var(--border); border-radius:8px; padding:11px 12px; margin:0 0 10px; background:var(--surface-2); color:var(--ink); font-size:14px; }
+  .auth-box .auth-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+  .auth-box .auth-message { min-height:18px; margin:10px 0 0; color:var(--ink-soft); font-size:12.5px; line-height:1.4; }
+  .auth-box .auth-note { margin:8px 0 0; color:var(--ink-faint); font-size:11.5px; line-height:1.4; }
+  @media (max-width:700px) { .account-status { display:none; } }
+
 </style>
 </head>
 <body>
@@ -563,6 +575,10 @@
         <button data-view="reminders">Reminders</button>
         <button data-view="scorecard">Scorecard</button>
       </nav>
+      <div class="account-area">
+        <span class="account-status" id="accountStatus">Local mode</span>
+        <button class="account-btn" id="accountBtn">Sign in</button>
+      </div>
       <button class="theme-toggle" id="themeToggle" title="Toggle theme">◐</button>
     </div>
   </header>
@@ -712,6 +728,28 @@
   </div>
 </div>
 
+
+<!-- Account sign-in modal -->
+<div class="modal-overlay" id="authModal">
+  <div class="modal-box auth-box">
+    <h3>Connect your Loopline account</h3>
+    <p class="modal-sub">Sign in to your account or create one. Your existing browser data will not be uploaded or changed by signing in.</p>
+    <input type="email" id="authEmail" autocomplete="email" placeholder="Email address">
+    <input type="password" id="authPassword" autocomplete="current-password" placeholder="Password (at least 6 characters)">
+    <div class="auth-actions">
+      <button class="btn accent" id="emailSignInBtn">Sign in</button>
+      <button class="btn ghost" id="emailSignUpBtn">Create account</button>
+      <button class="btn ghost" id="googleSignInBtn">Continue with Google</button>
+    </div>
+    <p class="auth-message" id="authMessage" role="status" aria-live="polite"></p>
+    <p class="auth-note">Email sign-up may require you to confirm your email. Cloud backup and team sharing will be connected in a later step.</p>
+    <div class="modal-actions" style="margin-top:14px;">
+      <button class="cancel" id="authCloseBtn">Close</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 (function(){
   "use strict";
@@ -762,6 +800,123 @@
 
   var POINTS_PER_CLOSE = 10;
   var POINTS_PER_REMINDER = 5;
+
+
+  // ---------- SUPABASE AUTHENTICATION ----------
+  var SUPABASE_URL = "https://uwlevtjsoehvmybfzncl.supabase.co";
+  var SUPABASE_PUBLISHABLE_KEY = "sb_publishable_Sqq0z23ZsPNGfcKydNYvcQ_MXbMtxEl";
+  var supabaseClient = null;
+  var currentUser = null;
+
+  function setAuthMessage(message) {
+    document.getElementById("authMessage").textContent = message || "";
+  }
+
+  function openAuthModal() {
+    setAuthMessage("");
+    document.getElementById("authModal").classList.add("active");
+  }
+
+  function closeAuthModal() {
+    document.getElementById("authModal").classList.remove("active");
+  }
+
+  function renderAccountStatus(user) {
+    currentUser = user || null;
+    var status = document.getElementById("accountStatus");
+    var button = document.getElementById("accountBtn");
+    if (currentUser) {
+      status.textContent = currentUser.email || "Signed in";
+      status.title = currentUser.email || "";
+      button.textContent = "Sign out";
+    } else {
+      status.textContent = "Local mode";
+      status.title = "Your data is currently stored in this browser";
+      button.textContent = "Sign in";
+    }
+  }
+
+  async function handleEmailSignIn() {
+    if (!supabaseClient) { setAuthMessage("Connection unavailable. Please refresh and try again."); return; }
+    var email = document.getElementById("authEmail").value.trim();
+    var password = document.getElementById("authPassword").value;
+    if (!email || !password) { setAuthMessage("Enter your email and password."); return; }
+    setAuthMessage("Signing in…");
+    var result = await supabaseClient.auth.signInWithPassword({ email: email, password: password });
+    if (result.error) { setAuthMessage(result.error.message); return; }
+    setAuthMessage("Signed in successfully.");
+    closeAuthModal();
+    showToast("Account connected");
+  }
+
+  async function handleEmailSignUp() {
+    if (!supabaseClient) { setAuthMessage("Connection unavailable. Please refresh and try again."); return; }
+    var email = document.getElementById("authEmail").value.trim();
+    var password = document.getElementById("authPassword").value;
+    if (!email || !password) { setAuthMessage("Enter your email and choose a password."); return; }
+    if (password.length < 6) { setAuthMessage("Use a password with at least 6 characters."); return; }
+    setAuthMessage("Creating your account…");
+    var result = await supabaseClient.auth.signUp({
+      email: email,
+      password: password,
+      options: { emailRedirectTo: window.location.origin + window.location.pathname }
+    });
+    if (result.error) { setAuthMessage(result.error.message); return; }
+    if (result.data.session) {
+      closeAuthModal();
+      showToast("Account created");
+    } else {
+      setAuthMessage("Account created. Check your email to confirm your address, then sign in.");
+    }
+  }
+
+  async function handleGoogleSignIn() {
+    if (!supabaseClient) { setAuthMessage("Connection unavailable. Please refresh and try again."); return; }
+    setAuthMessage("Opening Google sign-in…");
+    var result = await supabaseClient.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: window.location.origin + window.location.pathname }
+    });
+    if (result.error) setAuthMessage(result.error.message);
+  }
+
+  async function handleSignOut() {
+    if (!supabaseClient) return;
+    var result = await supabaseClient.auth.signOut();
+    if (result.error) { showToast("Couldn't sign out: " + result.error.message); return; }
+    showToast("Signed out");
+  }
+
+  document.getElementById("accountBtn").addEventListener("click", function() {
+    if (currentUser) handleSignOut();
+    else openAuthModal();
+  });
+  document.getElementById("authCloseBtn").addEventListener("click", closeAuthModal);
+  document.getElementById("authModal").addEventListener("click", function(e) {
+    if (e.target === this) closeAuthModal();
+  });
+  document.getElementById("emailSignInBtn").addEventListener("click", handleEmailSignIn);
+  document.getElementById("emailSignUpBtn").addEventListener("click", handleEmailSignUp);
+  document.getElementById("googleSignInBtn").addEventListener("click", handleGoogleSignIn);
+
+  if (window.supabase && window.supabase.createClient) {
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+    supabaseClient.auth.getSession().then(function(result) {
+      if (result.error) {
+        document.getElementById("accountStatus").textContent = "Auth unavailable";
+        console.error("Loopline auth session:", result.error);
+        return;
+      }
+      renderAccountStatus(result.data.session ? result.data.session.user : null);
+    });
+    supabaseClient.auth.onAuthStateChange(function(event, session) {
+      renderAccountStatus(session ? session.user : null);
+    });
+  } else {
+    document.getElementById("accountStatus").textContent = "Auth unavailable";
+    document.getElementById("accountBtn").disabled = true;
+    console.error("Loopline: Supabase JS library did not load.");
+  }
 
   var state = loadState();
 
