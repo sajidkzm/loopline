@@ -550,6 +550,8 @@
 
   /* Account and authentication */
   .account-area { display:flex; align-items:center; gap:8px; }
+  .workspace-notice { display:none; margin:-8px 0 20px; padding:11px 14px; border:1px solid var(--accent); border-radius:9px; background:var(--accent-soft); color:var(--accent-ink); font-size:13px; line-height:1.45; }
+  .workspace-notice.show { display:block; }
   .account-status { max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink-soft); font-size:12px; }
   .account-btn { border:1px solid var(--border); background:var(--surface); color:var(--ink); border-radius:8px; padding:8px 11px; font-size:13px; font-weight:700; }
   .auth-box { max-width:440px; }
@@ -617,6 +619,7 @@
       <button class="theme-toggle" id="themeToggle" title="Toggle theme">◐</button>
     </div>
   </header>
+  <div class="workspace-notice" id="workspaceNotice" role="status"></div>
 
   <!-- BOARD VIEW -->
   <section class="view active" id="view-board">
@@ -777,7 +780,7 @@
         <button class="btn ghost" id="emailSignUpBtn">Create account</button>
         <button class="btn ghost" id="googleSignInBtn">Continue with Google</button>
       </div>
-      <p class="auth-note">Use Google or email and password. You can switch accounts whenever you need.</p>
+      <p class="auth-note">Use Google or email and password. You can switch accounts whenever you need. For Google, choose the account you want on the Google account-selection screen.</p>
     </div>
     <div id="signedInAccountPanel" hidden>
       <p class="auth-message">Signed in as <strong id="signedInEmail"></strong></p>
@@ -1107,13 +1110,20 @@
 
   function renderCurrentDataMode() {
     var status = document.getElementById("accountStatus");
+    var notice = document.getElementById("workspaceNotice");
     if (activeWorkspaceId) {
       status.textContent = "Team · " + activeWorkspaceName;
       status.title = "You are viewing shared workspace data";
+      notice.textContent = "TEAM WORKSPACE: Tasks and reminders added here are visible to all workspace members — even if you choose the Personal category. Select Team → Return to personal data before entering private items.";
+      notice.classList.add("show");
     } else if (currentUser) {
+      notice.classList.remove("show");
+      notice.textContent = "";
       status.textContent = currentUser.email || "Signed in";
       status.title = currentUser.email || "";
     } else {
+      notice.classList.remove("show");
+      notice.textContent = "";
       status.textContent = "Local mode";
       status.title = "Your data is stored in this browser";
     }
@@ -1415,7 +1425,7 @@
         backupCurrentLocalState(user.id);
         await activatePersonalCloudSync(cloudState, "Your private cloud data was loaded automatically. This device is now syncing with your other devices.");
       } else if (cloudHas) {
-        setPersonalSyncMessage("A private cloud copy exists (" + cloudState.tasks.length + " tasks and " + cloudState.reminders.length + " reminders). Load it to sync this device; your current browser data will be backed up first.");
+        setPersonalSyncMessage("Cloud data exists (" + cloudState.tasks.length + " tasks and " + cloudState.reminders.length + " reminders). To sync this device, select Use cloud data below. Your current browser data will be backed up first.");
         showPersonalSyncChoices(["useCloudDataBtn","keepLocalDataBtn"]);
       } else if (localHas) {
         setPersonalSyncMessage("This browser has " + state.tasks.length + " tasks and " + state.reminders.length + " reminders, but your cloud record is empty. Upload these to make them available on your other devices.");
@@ -2010,7 +2020,7 @@
       '<h4>' + escapeHtml(t.title) + '</h4>' +
       '<div class="badge-row">' +
       '<span class="priority-badge ' + pri.id + '">' + pri.label + '</span>' +
-      '<span class="tag ' + t.category + '">' + (t.category === "work" ? "WORK" : "PERSONAL") + '</span>' +
+      '<span class="tag ' + t.category + '">' + (t.category === "work" ? "WORK" : (activeWorkspaceId ? "PERSONAL · SHARED" : "PERSONAL")) + '</span>' +
       '</div>' +
       '</div>' +
       '<div class="meta">' + (stageId === "closed" ? "Closed " + t.closedAt : (age === 0 ? "Added today" : age + " day" + (age===1?"":"s") + " open")) + '</div>';
@@ -2148,7 +2158,7 @@
       el.innerHTML =
         '<span class="freq-badge">' + freqLabel(r.freqDays) + '</span>' +
         '<span class="priority-badge ' + pri.id + '">' + pri.label + '</span>' +
-        '<span class="tag ' + r.category + '">' + (r.category === "work" ? "WORK" : "PERSONAL") + '</span>' +
+        '<span class="tag ' + r.category + '">' + (r.category === "work" ? "WORK" : (activeWorkspaceId ? "PERSONAL · SHARED" : "PERSONAL")) + '</span>' +
         '<span class="rname">' + escapeHtml(r.name) + '</span>' +
         '<span class="rdue ' + dueClass + '">' + dueText + '</span>' +
         '<button class="donebtn">Mark done</button>' +
