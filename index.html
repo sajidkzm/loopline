@@ -550,6 +550,8 @@
 
   /* Account and authentication */
   .account-area { display:flex; align-items:center; gap:8px; }
+  .workspace-notice { display:none; margin:-8px 0 20px; padding:11px 14px; border:1px solid var(--accent); border-radius:9px; background:var(--accent-soft); color:var(--accent-ink); font-size:13px; line-height:1.45; }
+  .workspace-notice.show { display:block; }
   .account-status { max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink-soft); font-size:12px; }
   .account-btn { border:1px solid var(--border); background:var(--surface); color:var(--ink); border-radius:8px; padding:8px 11px; font-size:13px; font-weight:700; }
   .auth-box { max-width:440px; }
@@ -569,7 +571,29 @@
   .auth-box .auth-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
   .auth-box .auth-message { min-height:18px; margin:10px 0 0; color:var(--ink-soft); font-size:12.5px; line-height:1.4; }
   .auth-box .auth-note { margin:8px 0 0; color:var(--ink-faint); font-size:11.5px; line-height:1.4; }
-  @media (max-width:700px) { .account-status { display:none; } }
+  @media (max-width:700px) {
+    .account-status { display:none; }
+    .app { padding:18px 13px 56px; }
+    header.top { align-items:stretch; flex-direction:column; gap:14px; }
+    header.top > div:last-child { width:100%; display:flex !important; flex-wrap:wrap; align-items:center !important; gap:8px !important; }
+    nav.tabs { order:2; flex:1 1 100%; min-width:0; justify-content:space-between; overflow-x:auto; }
+    nav.tabs button { flex:1 1 auto; padding:9px 10px; white-space:nowrap; }
+    .account-area { margin-left:auto; }
+    .quickadd { align-items:stretch; gap:9px; }
+    .quickadd input[type="text"] { flex-basis:100%; min-width:0; min-height:42px; }
+    .quickadd select, .quickadd button { flex:1 1 calc(50% - 6px); min-height:40px; }
+    .filters { flex-wrap:wrap; }
+    .filters .count { flex-basis:100%; margin-left:0; }
+    .rem-add { grid-template-columns:1fr; }
+    .rem-item { flex-wrap:wrap; align-items:center; gap:9px; padding:12px; }
+    .rem-item .rname { flex-basis:100%; min-width:0; }
+    .rem-item .rdue { margin-right:auto; }
+    .reward { flex-wrap:wrap; gap:9px; }
+    .modal-overlay { align-items:flex-start; overflow-y:auto; padding:12px; }
+    .modal-box { margin:auto; max-height:calc(100dvh - 24px); overflow-y:auto; padding:18px; }
+    .auth-box .auth-actions { flex-direction:column; }
+    .auth-box .auth-actions button { width:100%; }
+  }
 
 </style>
 </head>
@@ -595,6 +619,7 @@
       <button class="theme-toggle" id="themeToggle" title="Toggle theme">◐</button>
     </div>
   </header>
+  <div class="workspace-notice" id="workspaceNotice" role="status"></div>
 
   <!-- BOARD VIEW -->
   <section class="view active" id="view-board">
@@ -745,17 +770,26 @@
 <!-- Account sign-in modal -->
 <div class="modal-overlay" id="authModal">
   <div class="modal-box auth-box">
-    <h3>Connect your Loopline account</h3>
-    <p class="modal-sub">Sign in to your account or create one. Your existing browser data will not be uploaded or changed by signing in.</p>
-    <input type="email" id="authEmail" autocomplete="email" placeholder="Email address">
-    <input type="password" id="authPassword" autocomplete="current-password" placeholder="Password (at least 6 characters)">
-    <div class="auth-actions">
-      <button class="btn accent" id="emailSignInBtn">Sign in</button>
-      <button class="btn ghost" id="emailSignUpBtn">Create account</button>
-      <button class="btn ghost" id="googleSignInBtn">Continue with Google</button>
+    <h3 id="authModalTitle">Sign in to Loopline</h3>
+    <p class="modal-sub" id="authModalSubtitle">Sign in or create an account to use Loopline across your devices.</p>
+    <div id="authCredentialsPanel">
+      <input type="email" id="authEmail" autocomplete="email" placeholder="Email address">
+      <input type="password" id="authPassword" autocomplete="current-password" placeholder="Password (at least 6 characters)">
+      <div class="auth-actions">
+        <button class="btn accent" id="emailSignInBtn">Sign in</button>
+        <button class="btn ghost" id="emailSignUpBtn">Create account</button>
+        <button class="btn ghost" id="googleSignInBtn">Continue with Google</button>
+      </div>
+      <p class="auth-note">Use Google or email and password. You can switch accounts whenever you need. For Google, choose the account you want on the Google account-selection screen.</p>
+    </div>
+    <div id="signedInAccountPanel" hidden>
+      <p class="auth-message">Signed in as <strong id="signedInEmail"></strong></p>
+      <div class="auth-actions">
+        <button class="btn ghost" id="switchAccountBtn" type="button">Switch account</button>
+        <button class="btn ghost" id="modalSignOutBtn" type="button">Sign out</button>
+      </div>
     </div>
     <p class="auth-message" id="authMessage" role="status" aria-live="polite"></p>
-    <p class="auth-note">Email sign-up may require you to confirm your email. Signing in does not upload or overwrite your existing browser data.</p>
     <div class="personal-sync-tools" id="personalSyncTools" hidden>
       <h4>Personal cloud sync</h4>
       <p id="personalSyncMessage">Checking your personal data…</p>
@@ -775,7 +809,7 @@
       <p class="auth-message" id="workspaceMessage" role="status" aria-live="polite"></p>
       <ul class="workspace-list" id="workspaceList"></ul>
       <button class="btn ghost" id="personalModeBtn" type="button" style="margin-top:10px;width:100%;">Return to personal data</button>
-      <p class="auth-note">Open a workspace to view and edit its shared tasks and reminders. Personal data stays separate.</p>
+      <p class="auth-note">Important: everything added while a workspace is open is shared with its members, including items marked Personal. Return to personal data before adding private tasks or reminders.</p>
     </div>
     <div class="modal-actions" style="margin-top:14px;">
       <button class="cancel" id="authCloseBtn">Close</button>
@@ -846,8 +880,20 @@
     document.getElementById("authMessage").textContent = message || "";
   }
 
+  function renderAuthModalState() {
+    var signedIn = !!currentUser;
+    document.getElementById("authModalTitle").textContent = signedIn ? "Your Loopline account" : "Sign in to Loopline";
+    document.getElementById("authModalSubtitle").textContent = signedIn
+      ? "Manage your account, personal sync, and team workspaces."
+      : "Sign in or create an account to use Loopline across your devices.";
+    document.getElementById("authCredentialsPanel").hidden = signedIn;
+    document.getElementById("signedInAccountPanel").hidden = !signedIn;
+    document.getElementById("signedInEmail").textContent = signedIn ? (currentUser.email || "Google account") : "";
+  }
+
   function openAuthModal() {
     setAuthMessage("");
+    renderAuthModalState();
     document.getElementById("authModal").classList.add("active");
     refreshWorkspaceList();
   }
@@ -863,13 +909,15 @@
     if (currentUser) {
       status.textContent = currentUser.email || "Signed in";
       status.title = currentUser.email || "";
-      button.textContent = "Sign out";
+      button.textContent = "Account";
+      renderAuthModalState();
       refreshWorkspaceList();
       preparePersonalCloudSync(currentUser);
     } else {
       status.textContent = "Local mode";
       status.title = "Your data is currently stored in this browser";
       button.textContent = "Sign in";
+      renderAuthModalState();
       var toolsEl = document.getElementById("workspaceTools");
       if (toolsEl) toolsEl.hidden = true;
       if (activeWorkspaceId) {
@@ -923,7 +971,10 @@
     setAuthMessage("Opening Google sign-in…");
     var result = await supabaseClient.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: window.location.origin + window.location.pathname }
+      options: {
+        redirectTo: window.location.origin + window.location.pathname,
+        queryParams: { prompt: "select_account" }
+      }
     });
     if (result.error) setAuthMessage(result.error.message);
   }
@@ -1059,13 +1110,20 @@
 
   function renderCurrentDataMode() {
     var status = document.getElementById("accountStatus");
+    var notice = document.getElementById("workspaceNotice");
     if (activeWorkspaceId) {
       status.textContent = "Team · " + activeWorkspaceName;
       status.title = "You are viewing shared workspace data";
+      notice.textContent = "TEAM WORKSPACE: Tasks and reminders added here are visible to all workspace members — even if you choose the Personal category. Select Team → Return to personal data before entering private items.";
+      notice.classList.add("show");
     } else if (currentUser) {
+      notice.classList.remove("show");
+      notice.textContent = "";
       status.textContent = currentUser.email || "Signed in";
       status.title = currentUser.email || "";
     } else {
+      notice.classList.remove("show");
+      notice.textContent = "";
       status.textContent = "Local mode";
       status.title = "Your data is stored in this browser";
     }
@@ -1190,10 +1248,9 @@
   document.getElementById("personalModeBtn").addEventListener("click", returnToPersonalMode);
 
   document.getElementById("workspaceBtn").addEventListener("click", openAuthModal);
-  document.getElementById("accountBtn").addEventListener("click", function() {
-    if (currentUser) handleSignOut();
-    else openAuthModal();
-  });
+  document.getElementById("accountBtn").addEventListener("click", openAuthModal);
+  document.getElementById("switchAccountBtn").addEventListener("click", handleSignOut);
+  document.getElementById("modalSignOutBtn").addEventListener("click", handleSignOut);
   document.getElementById("authCloseBtn").addEventListener("click", closeAuthModal);
   document.getElementById("authModal").addEventListener("click", function(e) {
     if (e.target === this) closeAuthModal();
@@ -1364,15 +1421,17 @@
       var cloudState = normalizeState(result.data ? result.data.state : null);
       var cloudHas = stateHasContent(cloudState);
       panel.dataset.checked = "yes";
-      if (cloudHas) {
-        setPersonalSyncMessage("A private cloud copy exists (" + cloudState.tasks.length + " tasks and " + cloudState.reminders.length + " reminders). You can load it. Your current browser data will first be backed up on this device.");
-        showPersonalSyncChoices(localHas ? ["useCloudDataBtn","keepLocalDataBtn"] : ["useCloudDataBtn"]);
+      if (cloudHas && !localHas) {
+        backupCurrentLocalState(user.id);
+        await activatePersonalCloudSync(cloudState, "Your private cloud data was loaded automatically. This device is now syncing with your other devices.");
+      } else if (cloudHas) {
+        setPersonalSyncMessage("Cloud data exists (" + cloudState.tasks.length + " tasks and " + cloudState.reminders.length + " reminders). To sync this device, select Use cloud data below. Your current browser data will be backed up first.");
+        showPersonalSyncChoices(["useCloudDataBtn","keepLocalDataBtn"]);
       } else if (localHas) {
-        setPersonalSyncMessage("This browser has " + state.tasks.length + " tasks and " + state.reminders.length + " reminders, but your cloud record is empty. Upload only if this is the data you want attached to this account.");
+        setPersonalSyncMessage("This browser has " + state.tasks.length + " tasks and " + state.reminders.length + " reminders, but your cloud record is empty. Upload these to make them available on your other devices.");
         showPersonalSyncChoices(["uploadLocalDataBtn","keepLocalDataBtn"]);
       } else {
-        setPersonalSyncMessage("No tasks or reminders were found in either place. You can enable private cloud sync for this account.");
-        showPersonalSyncChoices(["enableEmptyCloudBtn","keepLocalDataBtn"]);
+        await activatePersonalCloudSync(defaultState(), "Private cloud sync is active. Changes will sync across your devices.");
       }
     } catch (error) {
       if (requestId !== personalSyncRequest) return;
@@ -1961,7 +2020,7 @@
       '<h4>' + escapeHtml(t.title) + '</h4>' +
       '<div class="badge-row">' +
       '<span class="priority-badge ' + pri.id + '">' + pri.label + '</span>' +
-      '<span class="tag ' + t.category + '">' + (t.category === "work" ? "WORK" : "PERSONAL") + '</span>' +
+      '<span class="tag ' + t.category + '">' + (t.category === "work" ? "WORK" : (activeWorkspaceId ? "PERSONAL · SHARED" : "PERSONAL")) + '</span>' +
       '</div>' +
       '</div>' +
       '<div class="meta">' + (stageId === "closed" ? "Closed " + t.closedAt : (age === 0 ? "Added today" : age + " day" + (age===1?"":"s") + " open")) + '</div>';
@@ -2099,7 +2158,7 @@
       el.innerHTML =
         '<span class="freq-badge">' + freqLabel(r.freqDays) + '</span>' +
         '<span class="priority-badge ' + pri.id + '">' + pri.label + '</span>' +
-        '<span class="tag ' + r.category + '">' + (r.category === "work" ? "WORK" : "PERSONAL") + '</span>' +
+        '<span class="tag ' + r.category + '">' + (r.category === "work" ? "WORK" : (activeWorkspaceId ? "PERSONAL · SHARED" : "PERSONAL")) + '</span>' +
         '<span class="rname">' + escapeHtml(r.name) + '</span>' +
         '<span class="rdue ' + dueClass + '">' + dueText + '</span>' +
         '<button class="donebtn">Mark done</button>' +
