@@ -564,9 +564,12 @@
   .workspace-tools h4 { margin:0 0 8px; font-size:13px; }
   .workspace-tools input { margin-bottom:8px; }
   .workspace-list { margin:10px 0 0; padding:0; list-style:none; }
-  .workspace-list li { padding:8px 10px; border:1px solid var(--border); border-radius:8px; margin-top:6px; font-size:12px; display:flex; justify-content:space-between; gap:8px; }
+  .workspace-list li { padding:8px 10px; border:1px solid var(--border); border-radius:8px; margin-top:6px; font-size:12px; display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; }
   .workspace-list small { color:var(--ink-faint); }
-  .workspace-open-btn { border:1px solid var(--border); background:var(--surface-2); color:var(--ink); border-radius:7px; padding:5px 9px; font-size:11px; cursor:pointer; }
+  .workspace-list .workspace-code { display:block; margin-top:5px; color:var(--ink); font-weight:800; letter-spacing:.12em; overflow-wrap:anywhere; }
+  .workspace-actions { display:flex; flex-wrap:wrap; gap:5px; }
+  .workspace-open-btn, .workspace-copy-btn, .workspace-delete-btn { border:1px solid var(--border); background:var(--surface-2); color:var(--ink); border-radius:7px; padding:6px 9px; font-size:11px; cursor:pointer; }
+  .workspace-delete-btn { color:var(--stage-followup); }
   .auth-box input { width:100%; border:1px solid var(--border); border-radius:8px; padding:11px 12px; margin:0 0 10px; background:var(--surface-2); color:var(--ink); font-size:14px; }
   .auth-box .auth-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
   .auth-box .auth-message { min-height:18px; margin:10px 0 0; color:var(--ink-soft); font-size:12.5px; line-height:1.4; }
@@ -1030,7 +1033,7 @@
     }
     var workspaces = await supabaseClient
       .from("loopline_workspaces")
-      .select("id, name")
+      .select("id, name, invite_code, created_by")
       .in("id", ids)
       .order("name");
     if (workspaces.error) {
@@ -1045,16 +1048,45 @@
       name.textContent = w.name;
       var role = document.createElement("small");
       role.textContent = membership ? membership.role : "member";
+      var code = document.createElement("strong");
+      code.className = "workspace-code";
+      code.textContent = "Invite code: " + (w.invite_code || "Unavailable");
       info.appendChild(name);
       info.appendChild(document.createElement("br"));
       info.appendChild(role);
+      info.appendChild(code);
+      var actions = document.createElement("div");
+      actions.className = "workspace-actions";
+      var copy = document.createElement("button");
+      copy.type = "button";
+      copy.className = "workspace-copy-btn";
+      copy.textContent = "Copy code";
+      copy.disabled = !w.invite_code;
+      copy.addEventListener("click", async function() {
+        try {
+          await navigator.clipboard.writeText(w.invite_code);
+          setWorkspaceMessage("Invite code copied: " + w.invite_code);
+        } catch (error) {
+          setWorkspaceMessage("Could not copy automatically. Select and copy the invite code shown above.");
+        }
+      });
       var open = document.createElement("button");
       open.type = "button";
       open.className = "workspace-open-btn";
-      open.textContent = activeWorkspaceId === w.id ? "Open" : "Open";
+      open.textContent = "Open";
       open.addEventListener("click", function() { openWorkspace(w.id, w.name); });
+      actions.appendChild(copy);
+      actions.appendChild(open);
+      if (w.created_by === currentUser.id) {
+        var remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "workspace-delete-btn";
+        remove.textContent = "Delete";
+        remove.addEventListener("click", function() { handleDeleteWorkspace(w.id, w.name); });
+        actions.appendChild(remove);
+      }
       item.appendChild(info);
-      item.appendChild(open);
+      item.appendChild(actions);
       listEl.appendChild(item);
     });
   }
@@ -1072,7 +1104,7 @@
       var created = result.data && result.data[0];
       if (!created) throw new Error("Workspace was created, but no details were returned.");
       document.getElementById("workspaceNameInput").value = "";
-      setWorkspaceMessage("Workspace created. Share this invitation code with teammates: " + created.invite_code);
+      setWorkspaceMessage("Workspace created. Share this easy code with teammates: " + created.invite_code);
       await refreshWorkspaceList();
     } catch (error) {
       setWorkspaceMessage("Couldn't create workspace: " + error.message);
@@ -1081,9 +1113,34 @@
     }
   }
 
+  async function handleDeleteWorkspace(workspaceId, workspaceName) {
+    if (!currentUser || !supabaseClient) return;
+    openConfirmModal(
+      "Delete " + workspaceName + "?",
+      "This permanently deletes the team, its shared tasks and reminders, and removes access for every member. This cannot be undone.",
+      async function() {
+        setWorkspaceMessage("Deleting workspace…");
+        try {
+          if (activeWorkspaceId === workspaceId) {
+            await returnToPersonalMode();
+            if (activeWorkspaceId === workspaceId) {
+              throw new Error("Could not safely leave the workspace because its latest changes could not be saved.");
+            }
+          }
+          var result = await supabaseClient.rpc("loopline_delete_workspace", { p_workspace_id: workspaceId });
+          if (result.error) throw result.error;
+          setWorkspaceMessage("Team deleted.");
+          await refreshWorkspaceList();
+        } catch (error) {
+          setWorkspaceMessage("Could not delete team: " + error.message);
+        }
+      }
+    );
+  }
+
   async function handleJoinWorkspace() {
     if (!currentUser || !supabaseClient) { setAuthMessage("Sign in first."); return; }
-    var code = document.getElementById("workspaceInviteInput").value.trim();
+    var code = document.getElementById("workspaceInviteInput").value.trim().toUpperCase().replace(/\s+/g, "");
     if (!code) { setWorkspaceMessage("Enter an invitation code."); return; }
     var button = document.getElementById("joinWorkspaceBtn");
     button.disabled = true;
