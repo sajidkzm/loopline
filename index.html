@@ -598,6 +598,65 @@
     .auth-box .auth-actions button { width:100%; }
   }
 
+
+  /* Welcome dashboard and responsive visual refresh */
+  .welcome-panel {
+    display:flex; align-items:center; justify-content:space-between; gap:16px;
+    padding:22px 24px; margin:0 0 20px;
+    background:linear-gradient(120deg, var(--surface), var(--accent-soft));
+    border:1px solid var(--border); border-radius:16px; box-shadow:var(--shadow);
+  }
+  .welcome-copy { min-width:0; }
+  .welcome-eyebrow { margin:0 0 6px; color:var(--accent-ink); font-size:11px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; }
+  .welcome-title { margin:0; font-size:clamp(23px,3vw,30px); line-height:1.15; letter-spacing:-.035em; font-weight:700; }
+  .welcome-subtitle { margin:7px 0 0; color:var(--ink-soft); font-size:13.5px; line-height:1.5; }
+  .welcome-date { flex:none; color:var(--ink-soft); font-size:12px; font-weight:700; text-align:right; }
+  .quickadd, .rem-add, .stat, .reward-add { border-radius:14px; }
+  .col { border-radius:14px; }
+  .card, .rem-item, .reward, .badge { border-radius:12px; }
+  button, input, select, textarea { -webkit-tap-highlight-color:transparent; }
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+    outline:2px solid var(--accent); outline-offset:2px;
+  }
+  @media (max-width:700px) {
+    .welcome-panel { align-items:flex-start; flex-direction:column; padding:18px; gap:8px; margin-bottom:16px; }
+    .welcome-date { text-align:left; }
+    nav.tabs { width:100%; }
+    nav.tabs button { min-height:42px; font-size:13px; }
+    .quickadd, .rem-add, .reward-add { padding:12px; }
+    .filters .seg { max-width:100%; }
+    .filters .seg button { min-height:38px; padding:8px 11px; }
+    .card .actions button, .rem-item button, .workspace-actions button { min-height:36px; }
+    .theme-toggle { min-height:40px; }
+  }
+  @media (min-width:701px) and (max-width:980px) {
+    .app { padding-left:20px; padding-right:20px; }
+    .board { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  }
+  :root {
+    --bg:#F3F7F6; --surface:#FFFFFF; --surface-2:#EAF1EF;
+    --ink:#192725; --ink-soft:#536560; --ink-faint:#82918B;
+    --border:#DCE7E3; --accent:#28796F; --accent-ink:#15584F;
+    --accent-soft:#E0F1EC; --radius:14px;
+    --shadow:0 1px 2px rgba(24,48,42,.04), 0 8px 24px rgba(24,48,42,.055);
+  }
+  :root[data-theme="dark"] {
+    --bg:#111B19; --surface:#192522; --surface-2:#22312D;
+    --ink:#EDF5F2; --ink-soft:#B6C7C1; --ink-faint:#82958E;
+    --border:#344640; --accent:#69B7A8; --accent-ink:#C8EEE5;
+    --accent-soft:#203D36;
+    --shadow:0 1px 2px rgba(0,0,0,.28), 0 8px 24px rgba(0,0,0,.22);
+  }
+  @media (prefers-color-scheme:dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#111B19; --surface:#192522; --surface-2:#22312D;
+      --ink:#EDF5F2; --ink-soft:#B6C7C1; --ink-faint:#82958E;
+      --border:#344640; --accent:#69B7A8; --accent-ink:#C8EEE5;
+      --accent-soft:#203D36;
+      --shadow:0 1px 2px rgba(0,0,0,.28), 0 8px 24px rgba(0,0,0,.22);
+    }
+  }
+
 </style>
 </head>
 <body>
@@ -623,6 +682,16 @@
     </div>
   </header>
   <div class="workspace-notice" id="workspaceNotice" role="status"></div>
+
+  <section class="welcome-panel" aria-live="polite">
+    <div class="welcome-copy">
+      <p class="welcome-eyebrow">YOUR LOOPLINE</p>
+      <h2 class="welcome-title" id="welcomeTitle">Welcome to Loopline</h2>
+      <p class="welcome-subtitle" id="welcomeSubtitle">A clearer day starts with one loop at a time.</p>
+    </div>
+    <div class="welcome-date" id="welcomeDate"></div>
+  </section>
+
 
   <!-- BOARD VIEW -->
   <section class="view active" id="view-board">
@@ -905,6 +974,26 @@
     document.getElementById("authModal").classList.remove("active");
   }
 
+
+  function renderWelcome(user) {
+    var hour = new Date().getHours();
+    var greeting = hour < 12 ? "Good morning" : (hour < 17 ? "Good afternoon" : "Good evening");
+    var metadata = user && user.user_metadata ? user.user_metadata : {};
+    var rawName = metadata.full_name || metadata.name || metadata.given_name || metadata.display_name || "";
+    if (!rawName && user && user.email) rawName = user.email.split("@")[0].replace(/[._-]+/g, " ");
+    var firstName = String(rawName || "").trim().split(/\s+/)[0];
+    if (firstName) firstName = firstName.charAt(0).toUpperCase() + firstName.slice(1);
+    var title = document.getElementById("welcomeTitle");
+    var subtitle = document.getElementById("welcomeSubtitle");
+    var date = document.getElementById("welcomeDate");
+    if (!title || !subtitle || !date) return;
+    title.textContent = user ? greeting + ", " + (firstName || "there") : "Welcome to Loopline";
+    subtitle.textContent = user
+      ? "Ready when you are. Pick a priority and make today count."
+      : "A clearer day starts with one loop at a time.";
+    date.textContent = new Date().toLocaleDateString(undefined, { weekday:"long", month:"short", day:"numeric" });
+  }
+
   function renderAccountStatus(user) {
     currentUser = user || null;
     var status = document.getElementById("accountStatus");
@@ -932,6 +1021,7 @@
         renderAllViews();
       }
     }
+    renderWelcome(currentUser);
     renderCurrentDataMode();
   }
 
