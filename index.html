@@ -704,6 +704,22 @@
       </div>
       <button type="button" class="account-btn" id="notificationToggle">Enable alerts</button>
     </section>
+
+    <section id="adminBroadcastPanel" hidden style="margin:0 0 18px;padding:16px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;"><strong>Loopline announcements</strong><span style="font-size:11px;color:var(--ink-soft);">ADMIN ONLY</span></div>
+      <p style="margin:0 0 12px;color:var(--ink-soft);font-size:12px;">Send a push notification to users who have enabled browser alerts.</p>
+      <label for="broadcastTitle" style="display:block;font-size:12px;margin:8px 0 4px;">Title</label>
+      <input id="broadcastTitle" maxlength="80" type="text" placeholder="A quick update from Loopline" style="width:100%;box-sizing:border-box;">
+      <label for="broadcastMessage" style="display:block;font-size:12px;margin:8px 0 4px;">Message</label>
+      <textarea id="broadcastMessage" maxlength="500" rows="3" placeholder="Write your announcement…" style="width:100%;box-sizing:border-box;resize:vertical;"></textarea>
+      <label for="broadcastUrl" style="display:block;font-size:12px;margin:8px 0 4px;">Optional link (https://)</label>
+      <input id="broadcastUrl" type="url" placeholder="https://…" style="width:100%;box-sizing:border-box;">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px;">
+        <button type="button" class="btn accent" id="broadcastSendBtn">Send to all opted-in users</button>
+        <span id="broadcastStatus" role="status" style="font-size:12px;color:var(--ink-soft);"></span>
+      </div>
+      <div style="margin-top:16px;"><strong style="font-size:13px;">Recent announcements</strong><div id="broadcastHistory" style="font-size:12px;color:var(--ink-soft);margin-top:8px;">Loading…</div></div>
+    </section>
     <div class="quickadd">
       <input type="text" id="taskInput" placeholder="Add something to follow up on… e.g. Send proposal to Meera">
       <select id="taskCategory" class="pill">
@@ -1031,6 +1047,7 @@
     }
     renderWelcome(currentUser);
     renderCurrentDataMode();
+    updateAdminBroadcastPanel();
   }
 
   async function handleEmailSignIn() {
@@ -2642,6 +2659,96 @@
   }
   document.addEventListener("visibilitychange", function() {
     if (!document.hidden) checkLooplineNotifications();
+  });
+
+
+  // ---------- ADMIN BROADCASTS ----------
+  var LOOPLINE_ADMIN_EMAIL = "mohammedsajidtvm@gmail.com";
+
+  async function broadcastRequest(method, body) {
+    if (!supabaseClient || !currentUser) throw new Error("Please sign in to your administrator account.");
+    var sessionResult = await supabaseClient.auth.getSession();
+    var accessToken = sessionResult.data && sessionResult.data.session && sessionResult.data.session.access_token;
+    if (!accessToken) throw new Error("Your session has expired. Please sign in again.");
+    var response = await fetch(SUPABASE_URL + "/functions/v1/send-loopline-broadcast", {
+      method: method,
+      headers: {
+        "Authorization": "Bearer " + accessToken,
+        "apikey": SUPABASE_PUBLISHABLE_KEY,
+        "Content-Type": "application/json"
+      },
+      body: body ? JSON.stringify(body) : undefined
+    });
+    var data = await response.json().catch(function(){ return {}; });
+    if (!response.ok) throw new Error(data.error || "The broadcast request failed.");
+    return data;
+  }
+
+  function renderBroadcastHistory(items) {
+    var target = document.getElementById("broadcastHistory");
+    if (!target) return;
+    if (!items || !items.length) { target.textContent = "No announcements sent yet."; return; }
+    target.innerHTML = "";
+    items.forEach(function(item) {
+      var entry = document.createElement("div");
+      entry.style.cssText = "padding:9px 0;border-top:1px solid var(--border);";
+      var heading = document.createElement("strong");
+      heading.textContent = item.title || "Announcement";
+      var detail = document.createElement("div");
+      detail.textContent = (item.sent_count || 0) + " sent · " + (item.failed_count || 0) +
+        " failed · " + (item.recipient_count || 0) + " subscriptions · " +
+        new Date(item.created_at).toLocaleString();
+      entry.appendChild(heading);
+      entry.appendChild(detail);
+      var body = document.createElement("div");
+      body.textContent = item.message || "";
+      entry.appendChild(body);
+      target.appendChild(entry);
+    });
+  }
+
+  async function loadBroadcastHistory() {
+    try {
+      var data = await broadcastRequest("GET");
+      renderBroadcastHistory(data.history || []);
+    } catch (error) {
+      var target = document.getElementById("broadcastHistory");
+      if (target) target.textContent = error.message;
+    }
+  }
+
+  function updateAdminBroadcastPanel() {
+    var panel = document.getElementById("adminBroadcastPanel");
+    if (!panel) return;
+    var allowed = !!(currentUser && currentUser.email &&
+      currentUser.email.trim().toLowerCase() === LOOPLINE_ADMIN_EMAIL);
+    panel.hidden = !allowed;
+    if (allowed) loadBroadcastHistory();
+  }
+
+  document.getElementById("broadcastSendBtn").addEventListener("click", async function() {
+    var button = this;
+    var status = document.getElementById("broadcastStatus");
+    var title = document.getElementById("broadcastTitle").value.trim();
+    var message = document.getElementById("broadcastMessage").value.trim();
+    var url = document.getElementById("broadcastUrl").value.trim();
+    if (!title || !message) { status.textContent = "Enter both a title and a message."; return; }
+    if (!window.confirm("Send this announcement to every user who enabled push notifications?")) return;
+    button.disabled = true;
+    status.textContent = "Sending…";
+    try {
+      var result = await broadcastRequest("POST", { title: title, message: message, url: url || "./" });
+      status.textContent = result.sent + " sent, " + result.failed + " failed, from " +
+        result.recipientCount + " subscriptions.";
+      document.getElementById("broadcastTitle").value = "";
+      document.getElementById("broadcastMessage").value = "";
+      document.getElementById("broadcastUrl").value = "";
+      await loadBroadcastHistory();
+    } catch (error) {
+      status.textContent = error.message;
+    } finally {
+      button.disabled = false;
+    }
   });
 
   // ---------- INIT ----------
