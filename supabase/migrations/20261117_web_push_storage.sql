@@ -33,9 +33,10 @@ grant select, insert, update, delete
 create table if not exists public.loopline_notification_log (
   id bigint generated always as identity primary key,
   user_id uuid not null references auth.users(id) on delete cascade,
+  subscription_id uuid not null references public.loopline_push_subscriptions(id) on delete cascade,
   notification_key text not null,
   sent_at timestamptz not null default now(),
-  unique (user_id, notification_key)
+  unique (user_id, subscription_id, notification_key)
 );
 
 alter table public.loopline_notification_log enable row level security;
