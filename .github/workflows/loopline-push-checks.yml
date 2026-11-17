@@ -1,0 +1,30 @@
+name: Loopline push checks
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "supabase/functions/send-loopline-push/**"
+      - "supabase/migrations/**"
+      - "index.html"
+      - "sw.js"
+      - ".github/workflows/loopline-push-checks.yml"
+  push:
+    branches: [feature/browser-push-notifications]
+    paths:
+      - "supabase/functions/send-loopline-push/**"
+      - "supabase/migrations/**"
+      - "index.html"
+      - "sw.js"
+      - ".github/workflows/loopline-push-checks.yml"
+
+jobs:
+  edge-function-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type-check push sender
+        run: deno check --config supabase/functions/send-loopline-push/deno.json supabase/functions/send-loopline-push/index.ts
