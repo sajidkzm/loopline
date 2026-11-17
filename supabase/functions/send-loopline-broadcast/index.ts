@@ -24,13 +24,21 @@ Deno.serve(async (req) => {
 
   const token = (req.headers.get("Authorization") || "").match(/^Bearer\s+(.+)$/i)?.[1];
   if (!token) return reply({ error: "Please sign in first." }, 401);
-  const authClient = createClient(url, anon, {
-    global: { headers: { Authorization: "Bearer " + token } },
+  // Validate the caller's access token against this Supabase project.
+  // Use the server-side service key as the API key, while passing the caller token
+  // only to getUser() for identity verification.
+  const authClient = createClient(url, service, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const { data: authData, error: authError } = await authClient.auth.getUser(token);
   const user = authData?.user;
   if (authError || !user?.email || user.email.trim().toLowerCase() !== adminEmail) {
+    console.error("Broadcast authorization rejected", {
+      authError: authError?.message || null,
+      hasUser: !!user,
+      hasEmail: !!user?.email,
+      adminEmailConfigured: !!adminEmail,
+    });
     return reply({ error: "You are not allowed to send Loopline announcements." }, 403);
   }
 
