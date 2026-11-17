@@ -43,8 +43,8 @@ Deno.serve(async (req) => {
   const url = Deno.env.get("SUPABASE_URL");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const privateKey = Deno.env.get("VAPID_PRIVATE_KEY");
-  const subject = Deno.env.get("VAPID_SUBJECT") || "mailto:admin@loopline.app";
-  if (!url || !serviceKey || !publicKey || !privateKey) {
+  const subject = Deno.env.get("VAPID_SUBJECT");
+  if (!url || !serviceKey || !publicKey || !privateKey || !subject) {
     return json({ error: "Push sender secrets are incomplete." }, 503);
   }
 
