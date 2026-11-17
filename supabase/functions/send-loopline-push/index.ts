@@ -63,7 +63,6 @@ Deno.serve(async (req) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const today = utcDate();
   const { data: users, error: usersError } = await db
     .from("loopline_personal_state")
     .select("user_id,state");
