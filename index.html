@@ -2475,7 +2475,9 @@
   function checkLooplineNotifications() {
     if (localStorage.getItem(notificationEnabledKey) !== "true") return;
     var optedInUserId = localStorage.getItem(notificationUserKey);
-    if (optedInUserId && (!currentUser || optedInUserId !== currentUser.id)) return;
+    // A signed-in account must explicitly opt in on this browser. Do not let
+    // a previous signed-out/local preference notify a different account's data.
+    if (currentUser ? optedInUserId !== currentUser.id : !!optedInUserId) return;
     if (!("Notification" in window) || Notification.permission !== "granted") return;
     // Shared workspace tasks have no assignment/ownership model yet. Avoid
     // notifying every team member about another member's shared work.
