@@ -2458,7 +2458,7 @@
 
   function sendLooplineNotification(title, body, tag) {
     if (!("Notification" in window) || Notification.permission !== "granted") return;
-    var options = { body: body, tag: tag, icon: "./icon-192.png", badge: "./icon-192.png" };
+    var options = { body: body, tag: tag };
     if (looplineServiceWorker) {
       looplineServiceWorker.showNotification(title, options).catch(function(){});
     } else {
@@ -2468,7 +2468,7 @@
 
   function checkLooplineNotifications() {
     if (localStorage.getItem(notificationEnabledKey) !== "true") return;
-    if (Notification.permission !== "granted") return;
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
     // Shared workspace tasks have no assignment/ownership model yet. Avoid
     // notifying every team member about another member's shared work.
     if (activeWorkspaceId) return;
