@@ -1394,7 +1394,10 @@
     state = loadState();
     renderCurrentDataMode();
     renderAllViews();
-    if (personalCloudEnabled && currentUser && currentUser.id === personalSyncUserId) startPersonalRealtime(currentUser.id);
+    if (personalCloudEnabled && currentUser && currentUser.id === personalSyncUserId) {
+      startPersonalRealtime(currentUser.id);
+      await syncPushRegistrationIfReady();
+    }
     setWorkspaceMessage("Back in your personal data.");
     closeAuthModal();
   }
@@ -1621,6 +1624,7 @@
       localStorage.setItem(LS_KEY, JSON.stringify(state));
       personalSyncUserId = userId;
       personalCloudEnabled = true;
+      await syncPushRegistrationIfReady();
       startPersonalRealtime(userId);
       setPersonalSyncMessage(successMessage);
       showPersonalSyncChoices([]);
@@ -2500,6 +2504,23 @@
     var output = new Uint8Array(raw.length);
     for (var i = 0; i < raw.length; ++i) output[i] = raw.charCodeAt(i);
     return output;
+  }
+
+  async function syncPushRegistrationIfReady() {
+    if (localStorage.getItem(notificationEnabledKey) !== "true" ||
+        !("Notification" in window) || Notification.permission !== "granted" ||
+        !currentUser || !personalCloudEnabled || activeWorkspaceId ||
+        !("serviceWorker" in navigator)) return;
+    try {
+      var registration = await navigator.serviceWorker.getRegistration("./");
+      if (!registration) registration = await navigator.serviceWorker.register("./sw.js");
+      looplineServiceWorker = registration;
+      await registerLooplinePush(registration);
+    } catch (error) {
+      console.warn("Loopline background push is not ready:", error);
+      var status = document.getElementById("notificationStatus");
+      if (status) status.textContent = "Browser alerts are on. Background push setup needs attention: " + error.message;
+    }
   }
 
   async function registerLooplinePush(registration) {
