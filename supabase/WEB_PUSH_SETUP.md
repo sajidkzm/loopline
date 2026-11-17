@@ -22,16 +22,16 @@ This feature is not active on the live website. Do not run these steps until the
    - `VAPID_PRIVATE_KEY` = generated private key
    - `VAPID_SUBJECT` = a contact URI such as `mailto:your-real-email@example.com`
    - `LOOPLINE_CRON_SECRET` = a long random secret generated locally
-   Supabase supplies `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to Edge Functions.
+   Supabase supplies `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to Edge Functions. Store the project secret key only in Vault for the scheduled invocation; never put it in frontend code or GitHub.
 5. Before creating Vault secrets, enable the Vault extension once in Supabase SQL Editor:
    ```sql
    create extension if not exists supabase_vault with schema vault;
    ```
-6. In Supabase SQL Editor, store the project URL, the same cron secret, and the project's publishable key in Vault (replace placeholders locally):
+6. In Supabase SQL Editor, store the project URL, the same cron secret, and the project's secret key in Vault (replace placeholders locally):
    ```sql
    select vault.create_secret('https://uwlevtjsoehvmybfzncl.supabase.co', 'loopline_project_url');
    select vault.create_secret('REPLACE_WITH_YOUR_CRON_SECRET', 'loopline_cron_secret');
-   select vault.create_secret('YOUR_SUPABASE_PUBLISHABLE_KEY', 'loopline_publishable_key');
+   select vault.create_secret('YOUR_SUPABASE_SECRET_KEY', 'loopline_secret_key');
    ```
 7. Apply `supabase/migrations/20261117_schedule_loopline_push.sql` to schedule the sender every 15 minutes.
 8. Test on the development URL using HTTPS, sign in, enable private cloud sync, then enable browser alerts. Allow notification permission in the browser.
