@@ -1,5 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import webpush from "npm:web-push@3.6.7";
+import { buildPushPayload } from "npm:@block65/webcrypto-web-push@2.1.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -48,7 +48,6 @@ Deno.serve(async (req) => {
     return json({ error: "Push sender secrets are incomplete." }, 503);
   }
 
-  webpush.setVapidDetails(subject, publicKey, privateKey);
   const db = createClient(url, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
@@ -127,10 +126,23 @@ Deno.serve(async (req) => {
         }
 
         try {
-          await webpush.sendNotification(
-            { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-            JSON.stringify({ title: event.title, body: event.body, tag: event.key, url: "./" }),
-          );
+          const subscription = {
+            endpoint: sub.endpoint,
+            expirationTime: null,
+            keys: { p256dh: sub.p256dh, auth: sub.auth },
+          };
+          const payload = await buildPushPayload({
+            data: JSON.stringify({ title: event.title, body: event.body, tag: event.key, url: "./" }),
+            options: { ttl: 60 * 60 },
+          }, subscription, { subject, publicKey, privateKey });
+          const response = await fetch(sub.endpoint, payload);
+          if (response.status === 404 || response.status === 410) {
+            await db.from("loopline_push_subscriptions").delete().eq("id", sub.id);
+            continue;
+          }
+          if (!response.ok) {
+            throw Object.assign(new Error("Push service returned HTTP " + response.status), { statusCode: response.status });
+          }
           const { error: logError } = await db
             .from("loopline_notification_log")
             .insert({
