@@ -13,6 +13,9 @@ create table if not exists public.loopline_push_subscriptions (
   updated_at timestamptz not null default now()
 );
 
+alter table public.loopline_push_subscriptions
+  add column if not exists timezone text not null default 'UTC';
+
 create index if not exists loopline_push_subscriptions_user_idx
   on public.loopline_push_subscriptions (user_id);
 
