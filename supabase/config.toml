@@ -1,0 +1,2 @@
+[functions.send-loopline-push]
+verify_jwt = false
