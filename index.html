@@ -2419,6 +2419,7 @@
 
   // ---------- NOTIFICATIONS ----------
   var notificationEnabledKey = "loopline_notifications_enabled_v1";
+  var notificationUserKey = "loopline_notifications_user_v1";
   var notificationSeenKey = "loopline_notifications_seen_v1";
   var looplineServiceWorker = null;
   var notificationCheckTimer = null;
@@ -2509,7 +2510,8 @@
   async function syncPushRegistrationIfReady() {
     if (localStorage.getItem(notificationEnabledKey) !== "true" ||
         !("Notification" in window) || Notification.permission !== "granted" ||
-        !currentUser || !personalCloudEnabled || activeWorkspaceId ||
+        !currentUser || localStorage.getItem(notificationUserKey) !== currentUser.id ||
+        !personalCloudEnabled || activeWorkspaceId ||
         !("serviceWorker" in navigator)) return;
     try {
       var registration = await navigator.serviceWorker.getRegistration("./");
@@ -2570,15 +2572,21 @@
     var permission = await Notification.requestPermission();
     if (permission !== "granted") {
       localStorage.setItem(notificationEnabledKey, "false");
+      localStorage.removeItem(notificationUserKey);
       updateNotificationPanel();
       return;
     }
     localStorage.setItem(notificationEnabledKey, "true");
+    // Remember which signed-in account explicitly enabled background push.
+    // A different account on this browser must opt in separately.
+    if (currentUser) localStorage.setItem(notificationUserKey, currentUser.id);
+    else localStorage.removeItem(notificationUserKey);
     if ("serviceWorker" in navigator) {
       try {
         var registration = await navigator.serviceWorker.register("./sw.js");
         looplineServiceWorker = registration;
-        if (currentUser && personalCloudEnabled && !activeWorkspaceId) {
+        if (currentUser && localStorage.getItem(notificationUserKey) === currentUser.id &&
+            personalCloudEnabled && !activeWorkspaceId) {
           await registerLooplinePush(registration);
         }
       } catch (e) {
