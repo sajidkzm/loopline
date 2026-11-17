@@ -2416,6 +2416,7 @@
   var notificationEnabledKey = "loopline_notifications_enabled_v1";
   var notificationSeenKey = "loopline_notifications_seen_v1";
   var looplineServiceWorker = null;
+  var notificationCheckTimer = null;
 
   function notificationSeen() {
     try { return JSON.parse(localStorage.getItem(notificationSeenKey) || "{}"); }
@@ -2510,6 +2511,9 @@
     }
     updateNotificationPanel();
     checkLooplineNotifications();
+    if (!notificationCheckTimer) {
+      notificationCheckTimer = window.setInterval(checkLooplineNotifications, 30 * 60 * 1000);
+    }
   }
 
   document.getElementById("notificationToggle").addEventListener("click", function() {
@@ -2531,7 +2535,7 @@
   updateNotificationPanel();
   if (localStorage.getItem(notificationEnabledKey) === "true") {
     checkLooplineNotifications();
-    window.setInterval(checkLooplineNotifications, 30 * 60 * 1000);
+    notificationCheckTimer = window.setInterval(checkLooplineNotifications, 30 * 60 * 1000);
   }
   document.addEventListener("visibilitychange", function() {
     if (!document.hidden) checkLooplineNotifications();
