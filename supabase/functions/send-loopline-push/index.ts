@@ -1,5 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { buildPushPayload } from "npm:@block65/webcrypto-web-push@2.1.0";
+import { buildPushPayload } from "npm:@block65/webcrypto-web-push@2.0.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
