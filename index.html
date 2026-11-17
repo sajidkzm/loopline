@@ -1727,7 +1727,9 @@
   }
 
   function todayISO() {
-    return new Date().toISOString().slice(0,10);
+    var d = new Date();
+    var local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0,10);
   }
 
   function daysBetween(a, b) {
@@ -2550,6 +2552,7 @@
       endpoint: subscription.endpoint,
       p256dh: json.keys && json.keys.p256dh,
       auth: json.keys && json.keys.auth,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
       updated_at: new Date().toISOString()
     }, { onConflict: "endpoint" });
     if (result.error) throw result.error;
