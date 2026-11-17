@@ -108,43 +108,50 @@ Deno.serve(async (req) => {
     if (!subscriptions?.length) continue;
 
     for (const event of events) {
-      const { error: logError } = await db
-        .from("loopline_notification_log")
-        .insert({ user_id: userId, notification_key: event.key });
-      if (logError?.code === "23505") {
-        skipped++;
-        continue;
-      }
-      if (logError) {
-        failed++;
-        console.error("Notification log insert failed", logError);
-        continue;
-      }
-
-      let eventSent = false;
       for (const sub of subscriptions) {
+        const { data: prior, error: priorError } = await db
+          .from("loopline_notification_log")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("subscription_id", sub.id)
+          .eq("notification_key", event.key)
+          .maybeSingle();
+        if (priorError) {
+          failed++;
+          console.error("Notification history lookup failed", priorError);
+          continue;
+        }
+        if (prior) {
+          skipped++;
+          continue;
+        }
+
         try {
           await webpush.sendNotification(
             { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
             JSON.stringify({ title: event.title, body: event.body, tag: event.key, url: "./" }),
           );
-          eventSent = true;
-          sent++;
+          const { error: logError } = await db
+            .from("loopline_notification_log")
+            .insert({
+              user_id: userId,
+              subscription_id: sub.id,
+              notification_key: event.key,
+            });
+          if (logError && logError.code !== "23505") {
+            failed++;
+            console.error("Notification delivery history insert failed", logError);
+          } else {
+            sent++;
+          }
         } catch (error) {
           const statusCode = (error as { statusCode?: number }).statusCode;
           if (statusCode === 404 || statusCode === 410) {
             await db.from("loopline_push_subscriptions").delete().eq("id", sub.id);
           }
+          failed++;
           console.error("Push delivery failed", statusCode || "", error);
         }
-      }
-
-      if (!eventSent) {
-        await db.from("loopline_notification_log")
-          .delete()
-          .eq("user_id", userId)
-          .eq("notification_key", event.key);
-        failed++;
       }
     }
   }
