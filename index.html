@@ -2447,8 +2447,8 @@
     button.disabled = false;
     button.textContent = enabled ? "Turn alerts off" : "Enable alerts";
     status.textContent = enabled
-      ? "Alerts are on for due reminders and tasks open more than 10 days. They run while Loopline is open."
-      : "Turn on browser alerts for due reminders and tasks open for more than 10 days. Alerts work while Loopline is open.";
+      ? "Browser alerts are enabled. Background push requires sign-in and private cloud sync."
+      : "Enable browser alerts for due reminders and tasks open more than 10 days. Sign in and enable private cloud sync for background push.";
   }
 
   function sendLooplineNotification(title, body, tag) {
@@ -2492,6 +2492,57 @@
     saveNotificationSeen(seen);
   }
 
+  function urlBase64ToUint8Array(base64String) {
+    var padding = "=".repeat((4 - base64String.length % 4) % 4);
+    var base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    var raw = window.atob(base64);
+    var output = new Uint8Array(raw.length);
+    for (var i = 0; i < raw.length; ++i) output[i] = raw.charCodeAt(i);
+    return output;
+  }
+
+  async function registerLooplinePush(registration) {
+    if (!currentUser || !supabaseClient || !personalCloudEnabled || activeWorkspaceId) {
+      throw new Error("Sign in, enable private cloud sync, and switch to Personal mode to enable background push.");
+    }
+    var keyResponse = await fetch(SUPABASE_URL + "/functions/v1/send-loopline-push", {
+      headers: { "apikey": SUPABASE_PUBLISHABLE_KEY }
+    });
+    var keyData = await keyResponse.json();
+    if (!keyResponse.ok || !keyData.publicKey) throw new Error(keyData.error || "Push service is not configured yet.");
+
+    var subscription = await registration.pushManager.getSubscription();
+    if (!subscription) {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(keyData.publicKey)
+      });
+    }
+    var json = subscription.toJSON();
+    var result = await supabaseClient.from("loopline_push_subscriptions").upsert({
+      user_id: currentUser.id,
+      endpoint: subscription.endpoint,
+      p256dh: json.keys && json.keys.p256dh,
+      auth: json.keys && json.keys.auth,
+      updated_at: new Date().toISOString()
+    }, { onConflict: "endpoint" });
+    if (result.error) throw result.error;
+  }
+
+  async function removeLooplinePushSubscription() {
+    if (!currentUser || !supabaseClient || !("serviceWorker" in navigator)) return;
+    try {
+      var registration = await navigator.serviceWorker.getRegistration("./");
+      if (!registration) return;
+      var subscription = await registration.pushManager.getSubscription();
+      if (!subscription) return;
+      await supabaseClient.from("loopline_push_subscriptions")
+        .delete().eq("endpoint", subscription.endpoint).eq("user_id", currentUser.id);
+    } catch (error) {
+      console.warn("Loopline push subscription cleanup failed:", error);
+    }
+  }
+
   async function enableLooplineNotifications() {
     if (!("Notification" in window)) { updateNotificationPanel(); return; }
     var permission = await Notification.requestPermission();
@@ -2505,8 +2556,12 @@
       try {
         var registration = await navigator.serviceWorker.register("./sw.js");
         looplineServiceWorker = registration;
+        if (currentUser && personalCloudEnabled && !activeWorkspaceId) {
+          await registerLooplinePush(registration);
+        }
       } catch (e) {
-        console.warn("Loopline service worker registration failed:", e);
+        console.warn("Loopline background push setup:", e);
+        showToast("Browser alerts are on, but background push isn't ready: " + e.message);
       }
     }
     updateNotificationPanel();
@@ -2516,8 +2571,9 @@
     }
   }
 
-  document.getElementById("notificationToggle").addEventListener("click", function() {
+  document.getElementById("notificationToggle").addEventListener("click", async function() {
     if (localStorage.getItem(notificationEnabledKey) === "true") {
+      await removeLooplinePushSubscription();
       localStorage.setItem(notificationEnabledKey, "false");
       updateNotificationPanel();
       return;
