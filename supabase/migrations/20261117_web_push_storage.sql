@@ -33,6 +33,8 @@ create policy "Users manage their own push subscriptions"
 
 grant select, insert, update, delete
   on public.loopline_push_subscriptions to authenticated;
+grant select, delete
+  on public.loopline_push_subscriptions to service_role;
 
 create table if not exists public.loopline_notification_log (
   id bigint generated always as identity primary key,
@@ -48,3 +50,5 @@ alter table public.loopline_notification_log enable row level security;
 -- Intentionally no authenticated policies or grants on notification history.
 -- The scheduled sender uses the Supabase service role and can bypass RLS.
 revoke all on public.loopline_notification_log from anon, authenticated;
+grant all privileges on public.loopline_notification_log to service_role;
+grant all privileges on sequence public.loopline_notification_log_id_seq to service_role;
