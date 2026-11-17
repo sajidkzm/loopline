@@ -1088,6 +1088,7 @@
       var saved = await saveSharedWorkspaceNow();
       if (!saved) { showToast("Please retry sign out after team changes are saved."); return; }
     }
+    await removeLooplinePushSubscription();
     var result = await supabaseClient.auth.signOut();
     if (result.error) { showToast("Couldn't sign out: " + result.error.message); return; }
     personalCloudEnabled = false;
