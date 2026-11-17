@@ -1088,7 +1088,10 @@
       var saved = await saveSharedWorkspaceNow();
       if (!saved) { showToast("Please retry sign out after team changes are saved."); return; }
     }
-    await removeLooplinePushSubscription();
+    if (!(await removeLooplinePushSubscription())) {
+      showToast("Please retry sign out after push cleanup succeeds.");
+      return;
+    }
     var result = await supabaseClient.auth.signOut();
     if (result.error) { showToast("Couldn't sign out: " + result.error.message); return; }
     personalCloudEnabled = false;
@@ -1748,15 +1751,15 @@
     var set = {};
     state.activityDates.forEach(function(d){ set[d] = true; });
     var streak = 0;
-    var cursor = new Date();
-    while (true) {
-      var iso = cursor.toISOString().slice(0,10);
-      if (set[iso]) {
-        streak++;
-        cursor.setDate(cursor.getDate() - 1);
-      } else {
-        break;
-      }
+    var cursor = todayISO();
+    while (set[cursor]) {
+      streak++;
+      var parts = cursor.split("-").map(Number);
+      var previous = new Date(parts[0], parts[1] - 1, parts[2]);
+      previous.setDate(previous.getDate() - 1);
+      cursor = previous.getFullYear() + "-" +
+        String(previous.getMonth() + 1).padStart(2, "0") + "-" +
+        String(previous.getDate()).padStart(2, "0");
     }
     return streak;
   }
@@ -2559,20 +2562,23 @@
   }
 
   async function removeLooplinePushSubscription() {
-    if (!currentUser || !supabaseClient || !("serviceWorker" in navigator)) return;
+    if (!currentUser || !supabaseClient || !("serviceWorker" in navigator)) return true;
     try {
       var registration = await navigator.serviceWorker.getRegistration("./");
-      if (!registration) return;
+      if (!registration) return true;
       var subscription = await registration.pushManager.getSubscription();
-      if (!subscription) return;
-      await supabaseClient.from("loopline_push_subscriptions")
+      if (!subscription) return true;
+      var result = await supabaseClient.from("loopline_push_subscriptions")
         .delete().eq("endpoint", subscription.endpoint).eq("user_id", currentUser.id);
-      // Remove the browser-held endpoint too. Otherwise a later account on this
-      // browser can inherit a subscription still associated with the prior user.
+      if (result.error) throw result.error;
+      // Only unsubscribe locally after the account's server-side record is removed.
       await subscription.unsubscribe();
       looplineServiceWorker = null;
+      return true;
     } catch (error) {
       console.warn("Loopline push subscription cleanup failed:", error);
+      showToast("Couldn't safely turn off background push. Please try again.");
+      return false;
     }
   }
 
@@ -2612,7 +2618,7 @@
 
   document.getElementById("notificationToggle").addEventListener("click", async function() {
     if (localStorage.getItem(notificationEnabledKey) === "true") {
-      await removeLooplinePushSubscription();
+      if (!(await removeLooplinePushSubscription())) return;
       localStorage.setItem(notificationEnabledKey, "false");
       updateNotificationPanel();
       return;
