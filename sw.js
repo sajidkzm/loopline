@@ -23,7 +23,7 @@ self.addEventListener("notificationclick", function(event) {
     event.notification.data && event.notification.data.url
       ? event.notification.data.url
       : "./",
-    self.location.origin
+    self.registration.scope
   );
 
   if (target.origin !== self.location.origin) target.href = self.registration.scope;
