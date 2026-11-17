@@ -8,6 +8,7 @@ create table if not exists public.loopline_push_subscriptions (
   endpoint text not null unique,
   p256dh text not null,
   auth text not null,
+  timezone text not null default 'UTC',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
