@@ -23,7 +23,7 @@ select cron.schedule(
         || '/functions/v1/send-loopline-push',
       headers := jsonb_build_object(
         'Content-Type', 'application/json',
-        'apikey', (select decrypted_secret from vault.decrypted_secrets where name = 'loopline_publishable_key'),
+        'apikey', (select decrypted_secret from vault.decrypted_secrets where name = 'loopline_secret_key'),
         'x-loopline-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'loopline_cron_secret')
       ),
       body := '{}'::jsonb
