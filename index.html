@@ -2469,6 +2469,7 @@
 
   function checkLooplineNotifications() {
     if (localStorage.getItem(notificationEnabledKey) !== "true") return;
+    if (currentUser && localStorage.getItem(notificationUserKey) !== currentUser.id) return;
     if (!("Notification" in window) || Notification.permission !== "granted") return;
     // Shared workspace tasks have no assignment/ownership model yet. Avoid
     // notifying every team member about another member's shared work.
@@ -2562,6 +2563,10 @@
       if (!subscription) return;
       await supabaseClient.from("loopline_push_subscriptions")
         .delete().eq("endpoint", subscription.endpoint).eq("user_id", currentUser.id);
+      // Remove the browser-held endpoint too. Otherwise a later account on this
+      // browser can inherit a subscription still associated with the prior user.
+      await subscription.unsubscribe();
+      looplineServiceWorker = null;
     } catch (error) {
       console.warn("Loopline push subscription cleanup failed:", error);
     }
