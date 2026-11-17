@@ -14,8 +14,19 @@ function json(data: unknown, status = 200) {
   });
 }
 
-function utcDate() {
-  return new Date().toISOString().slice(0, 10);
+function dateInTimezone(timeZone: string) {
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(new Date());
+    const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    return values.year + "-" + values.month + "-" + values.day;
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
 }
 
 function daysBetween(start: string, end: string) {
@@ -69,35 +80,9 @@ Deno.serve(async (req) => {
       reminders?: Array<{ id?: string; name?: string; nextDue?: string }>;
     };
 
-    const events: Array<{ key: string; title: string; body: string }> = [];
-    for (const task of state.tasks || []) {
-      if (!task?.id || !task.createdAt || task.stage === "closed") continue;
-      const age = daysBetween(task.createdAt, today);
-      if (age >= 10) {
-        events.push({
-          key: "task-10d-" + task.id,
-          title: "A loop needs attention",
-          body: (task.title || "A task") + " has been open for " + age + " days.",
-        });
-      }
-    }
-
-    for (const reminder of state.reminders || []) {
-      if (!reminder?.id || !reminder.nextDue || reminder.nextDue > today) continue;
-      const overdue = daysBetween(reminder.nextDue, today);
-      events.push({
-        key: "reminder-due-" + reminder.id + "-" + reminder.nextDue,
-        title: overdue > 0 ? "Reminder overdue" : "Reminder due today",
-        body: (reminder.name || "A reminder") + (overdue > 0
-          ? " is overdue by " + overdue + (overdue === 1 ? " day." : " days.")
-          : " is due today."),
-      });
-    }
-
-    if (!events.length) continue;
     const { data: subscriptions, error: subError } = await db
       .from("loopline_push_subscriptions")
-      .select("id,endpoint,p256dh,auth")
+      .select("id,endpoint,p256dh,auth,timezone")
       .eq("user_id", userId);
     if (subError) {
       failed++;
@@ -106,8 +91,30 @@ Deno.serve(async (req) => {
     }
     if (!subscriptions?.length) continue;
 
-    for (const event of events) {
-      for (const sub of subscriptions) {
+    for (const sub of subscriptions) {
+      const today = dateInTimezone(sub.timezone || "UTC");
+      const events: Array<{ key: string; title: string; body: string }> = [];
+      for (const task of state.tasks || []) {
+        if (!task?.id || !task.createdAt || task.stage === "closed") continue;
+        const age = daysBetween(task.createdAt, today);
+        if (age >= 10) events.push({
+          key: "task-10d-" + task.id,
+          title: "A loop needs attention",
+          body: (task.title || "A task") + " has been open for " + age + " days.",
+        });
+      }
+      for (const reminder of state.reminders || []) {
+        if (!reminder?.id || !reminder.nextDue || reminder.nextDue > today) continue;
+        const overdue = daysBetween(reminder.nextDue, today);
+        events.push({
+          key: "reminder-due-" + reminder.id + "-" + reminder.nextDue,
+          title: overdue > 0 ? "Reminder overdue" : "Reminder due today",
+          body: (reminder.name || "A reminder") + (overdue > 0
+            ? " is overdue by " + overdue + (overdue === 1 ? " day." : " days.")
+            : " is due today."),
+        });
+      }
+      for (const event of events) {
         const { data: prior, error: priorError } = await db
           .from("loopline_notification_log")
           .select("id")
