@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="./manifest.json">
 <title>Loopline</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -696,6 +697,13 @@
   <!-- BOARD VIEW -->
   <section class="view active" id="view-board">
     <div class="today-banner" id="todayBanner"></div>
+    <section id="notificationPanel" style="margin:0 0 18px;padding:14px 16px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;">
+      <div style="min-width:220px;flex:1;">
+        <strong style="display:block;font-size:14px;">Stay on top of your loops</strong>
+        <span id="notificationStatus" style="display:block;color:var(--ink-soft);font-size:12px;margin-top:3px;">Turn on browser alerts for due reminders and tasks open for more than 10 days. Alerts work while Loopline is open.</span>
+      </div>
+      <button type="button" class="account-btn" id="notificationToggle">Enable alerts</button>
+    </section>
     <div class="quickadd">
       <input type="text" id="taskInput" placeholder="Add something to follow up on… e.g. Send proposal to Meera">
       <select id="taskCategory" class="pill">
@@ -1080,6 +1088,10 @@
       var saved = await saveSharedWorkspaceNow();
       if (!saved) { showToast("Please retry sign out after team changes are saved."); return; }
     }
+    if (!(await removeLooplinePushSubscription())) {
+      showToast("Please retry sign out after push cleanup succeeds.");
+      return;
+    }
     var result = await supabaseClient.auth.signOut();
     if (result.error) { showToast("Couldn't sign out: " + result.error.message); return; }
     personalCloudEnabled = false;
@@ -1385,7 +1397,10 @@
     state = loadState();
     renderCurrentDataMode();
     renderAllViews();
-    if (personalCloudEnabled && currentUser && currentUser.id === personalSyncUserId) startPersonalRealtime(currentUser.id);
+    if (personalCloudEnabled && currentUser && currentUser.id === personalSyncUserId) {
+      startPersonalRealtime(currentUser.id);
+      await syncPushRegistrationIfReady();
+    }
     setWorkspaceMessage("Back in your personal data.");
     closeAuthModal();
   }
@@ -1612,6 +1627,7 @@
       localStorage.setItem(LS_KEY, JSON.stringify(state));
       personalSyncUserId = userId;
       personalCloudEnabled = true;
+      await syncPushRegistrationIfReady();
       startPersonalRealtime(userId);
       setPersonalSyncMessage(successMessage);
       showPersonalSyncChoices([]);
@@ -1714,7 +1730,9 @@
   }
 
   function todayISO() {
-    return new Date().toISOString().slice(0,10);
+    var d = new Date();
+    var local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0,10);
   }
 
   function daysBetween(a, b) {
@@ -1733,15 +1751,15 @@
     var set = {};
     state.activityDates.forEach(function(d){ set[d] = true; });
     var streak = 0;
-    var cursor = new Date();
-    while (true) {
-      var iso = cursor.toISOString().slice(0,10);
-      if (set[iso]) {
-        streak++;
-        cursor.setDate(cursor.getDate() - 1);
-      } else {
-        break;
-      }
+    var cursor = todayISO();
+    while (set[cursor]) {
+      streak++;
+      var parts = cursor.split("-").map(Number);
+      var previous = new Date(parts[0], parts[1] - 1, parts[2]);
+      previous.setDate(previous.getDate() - 1);
+      cursor = previous.getFullYear() + "-" +
+        String(previous.getMonth() + 1).padStart(2, "0") + "-" +
+        String(previous.getDate()).padStart(2, "0");
     }
     return streak;
   }
@@ -2403,6 +2421,228 @@
       rewardsEl.appendChild(el);
     });
   }
+
+  // ---------- NOTIFICATIONS ----------
+  var notificationEnabledKey = "loopline_notifications_enabled_v1";
+  var notificationUserKey = "loopline_notifications_user_v1";
+  var notificationSeenKey = "loopline_notifications_seen_v1";
+  var looplineServiceWorker = null;
+  var notificationCheckTimer = null;
+
+  function notificationSeen() {
+    try { return JSON.parse(localStorage.getItem(notificationSeenKey) || "{}"); }
+    catch (e) { return {}; }
+  }
+
+  function saveNotificationSeen(seen) {
+    try { localStorage.setItem(notificationSeenKey, JSON.stringify(seen)); } catch (e) {}
+  }
+
+  function updateNotificationPanel() {
+    var button = document.getElementById("notificationToggle");
+    var status = document.getElementById("notificationStatus");
+    if (!button || !status) return;
+    var enabled = localStorage.getItem(notificationEnabledKey) === "true";
+    if (!("Notification" in window)) {
+      button.disabled = true;
+      button.textContent = "Not supported";
+      status.textContent = "This browser does not support notifications.";
+      return;
+    }
+    if (Notification.permission === "denied") {
+      button.disabled = true;
+      button.textContent = "Blocked in browser";
+      status.textContent = "Notifications are blocked. Allow them in your browser's site settings to use alerts.";
+      return;
+    }
+    button.disabled = false;
+    button.textContent = enabled ? "Turn alerts off" : "Enable alerts";
+    status.textContent = enabled
+      ? "Browser alerts are enabled. Background push requires sign-in and private cloud sync."
+      : "Enable browser alerts for due reminders and tasks open more than 10 days. Sign in and enable private cloud sync for background push.";
+  }
+
+  function sendLooplineNotification(title, body, tag) {
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    var options = { body: body, tag: tag };
+    if (looplineServiceWorker) {
+      looplineServiceWorker.showNotification(title, options).catch(function(){});
+    } else {
+      try { new Notification(title, options); } catch (e) {}
+    }
+  }
+
+  function checkLooplineNotifications() {
+    if (localStorage.getItem(notificationEnabledKey) !== "true") return;
+    var optedInUserId = localStorage.getItem(notificationUserKey);
+    // A signed-in account must explicitly opt in on this browser. Do not let
+    // a previous signed-out/local preference notify a different account's data.
+    if (currentUser ? optedInUserId !== currentUser.id : !!optedInUserId) return;
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    // Shared workspace tasks have no assignment/ownership model yet. Avoid
+    // notifying every team member about another member's shared work.
+    if (activeWorkspaceId) return;
+    var seen = notificationSeen();
+    var today = todayISO();
+    (state.tasks || []).forEach(function(task) {
+      if (!task || task.stage === "closed" || !task.createdAt || !task.id) return;
+      var age = daysBetween(task.createdAt, today);
+      var key = "task-10d-" + task.id;
+      if (age >= 10 && !seen[key]) {
+        sendLooplineNotification("A loop needs attention", task.title + " has been open for " + age + " days.", key);
+        seen[key] = today;
+      }
+    });
+    (state.reminders || []).forEach(function(reminder) {
+      if (!reminder || !reminder.id || !reminder.nextDue || reminder.nextDue > today) return;
+      var key = "reminder-due-" + reminder.id + "-" + reminder.nextDue;
+      if (!seen[key]) {
+        var overdue = daysBetween(reminder.nextDue, today);
+        sendLooplineNotification(overdue > 0 ? "Reminder overdue" : "Reminder due today",
+          reminder.name + (overdue > 0 ? " is overdue by " + overdue + " day" + (overdue === 1 ? "" : "s") + "." : " is due today."),
+          key);
+        seen[key] = today;
+      }
+    });
+    saveNotificationSeen(seen);
+  }
+
+  function urlBase64ToUint8Array(base64String) {
+    var padding = "=".repeat((4 - base64String.length % 4) % 4);
+    var base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    var raw = window.atob(base64);
+    var output = new Uint8Array(raw.length);
+    for (var i = 0; i < raw.length; ++i) output[i] = raw.charCodeAt(i);
+    return output;
+  }
+
+  async function syncPushRegistrationIfReady() {
+    if (localStorage.getItem(notificationEnabledKey) !== "true" ||
+        !("Notification" in window) || Notification.permission !== "granted" ||
+        !currentUser || localStorage.getItem(notificationUserKey) !== currentUser.id ||
+        !personalCloudEnabled || activeWorkspaceId ||
+        !("serviceWorker" in navigator)) return;
+    try {
+      var registration = await navigator.serviceWorker.getRegistration("./");
+      if (!registration) registration = await navigator.serviceWorker.register("./sw.js");
+      looplineServiceWorker = registration;
+      await registerLooplinePush(registration);
+    } catch (error) {
+      console.warn("Loopline background push is not ready:", error);
+      var status = document.getElementById("notificationStatus");
+      if (status) status.textContent = "Browser alerts are on. Background push setup needs attention: " + error.message;
+    }
+  }
+
+  async function registerLooplinePush(registration) {
+    if (!currentUser || !supabaseClient || !personalCloudEnabled || activeWorkspaceId) {
+      throw new Error("Sign in, enable private cloud sync, and switch to Personal mode to enable background push.");
+    }
+    var keyResponse = await fetch(SUPABASE_URL + "/functions/v1/send-loopline-push", {
+      headers: { "apikey": SUPABASE_PUBLISHABLE_KEY }
+    });
+    var keyData = await keyResponse.json();
+    if (!keyResponse.ok || !keyData.publicKey) throw new Error(keyData.error || "Push service is not configured yet.");
+
+    var subscription = await registration.pushManager.getSubscription();
+    if (!subscription) {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(keyData.publicKey)
+      });
+    }
+    var json = subscription.toJSON();
+    var result = await supabaseClient.from("loopline_push_subscriptions").upsert({
+      user_id: currentUser.id,
+      endpoint: subscription.endpoint,
+      p256dh: json.keys && json.keys.p256dh,
+      auth: json.keys && json.keys.auth,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+      updated_at: new Date().toISOString()
+    }, { onConflict: "endpoint" });
+    if (result.error) throw result.error;
+  }
+
+  async function removeLooplinePushSubscription() {
+    if (!currentUser || !supabaseClient || !("serviceWorker" in navigator)) return true;
+    try {
+      var registration = await navigator.serviceWorker.getRegistration("./");
+      if (!registration) return true;
+      var subscription = await registration.pushManager.getSubscription();
+      if (!subscription) return true;
+      var result = await supabaseClient.from("loopline_push_subscriptions")
+        .delete().eq("endpoint", subscription.endpoint).eq("user_id", currentUser.id);
+      if (result.error) throw result.error;
+      // Only unsubscribe locally after the account's server-side record is removed.
+      await subscription.unsubscribe();
+      looplineServiceWorker = null;
+      return true;
+    } catch (error) {
+      console.warn("Loopline push subscription cleanup failed:", error);
+      showToast("Couldn't safely turn off background push. Please try again.");
+      return false;
+    }
+  }
+
+  async function enableLooplineNotifications() {
+    if (!("Notification" in window)) { updateNotificationPanel(); return; }
+    var permission = await Notification.requestPermission();
+    if (permission !== "granted") {
+      localStorage.setItem(notificationEnabledKey, "false");
+      localStorage.removeItem(notificationUserKey);
+      updateNotificationPanel();
+      return;
+    }
+    localStorage.setItem(notificationEnabledKey, "true");
+    // Remember which signed-in account explicitly enabled background push.
+    // A different account on this browser must opt in separately.
+    if (currentUser) localStorage.setItem(notificationUserKey, currentUser.id);
+    else localStorage.removeItem(notificationUserKey);
+    if ("serviceWorker" in navigator) {
+      try {
+        var registration = await navigator.serviceWorker.register("./sw.js");
+        looplineServiceWorker = registration;
+        if (currentUser && localStorage.getItem(notificationUserKey) === currentUser.id &&
+            personalCloudEnabled && !activeWorkspaceId) {
+          await registerLooplinePush(registration);
+        }
+      } catch (e) {
+        console.warn("Loopline background push setup:", e);
+        showToast("Browser alerts are on, but background push isn't ready: " + e.message);
+      }
+    }
+    updateNotificationPanel();
+    checkLooplineNotifications();
+    if (!notificationCheckTimer) {
+      notificationCheckTimer = window.setInterval(checkLooplineNotifications, 30 * 60 * 1000);
+    }
+  }
+
+  document.getElementById("notificationToggle").addEventListener("click", async function() {
+    if (localStorage.getItem(notificationEnabledKey) === "true") {
+      if (!(await removeLooplinePushSubscription())) return;
+      localStorage.setItem(notificationEnabledKey, "false");
+      updateNotificationPanel();
+      return;
+    }
+    enableLooplineNotifications();
+  });
+
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("./sw.js").then(function(registration) {
+      looplineServiceWorker = registration;
+    }).catch(function(error) {
+      console.warn("Loopline service worker unavailable:", error);
+    });
+  }
+  updateNotificationPanel();
+  if (localStorage.getItem(notificationEnabledKey) === "true") {
+    checkLooplineNotifications();
+    notificationCheckTimer = window.setInterval(checkLooplineNotifications, 30 * 60 * 1000);
+  }
+  document.addEventListener("visibilitychange", function() {
+    if (!document.hidden) checkLooplineNotifications();
+  });
 
   // ---------- INIT ----------
   renderBoard();

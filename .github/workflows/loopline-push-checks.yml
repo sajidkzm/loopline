@@ -1,0 +1,75 @@
+name: Loopline push checks
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "supabase/functions/send-loopline-push/**"
+      - "supabase/migrations/**"
+      - "index.html"
+      - "sw.js"
+      - ".github/workflows/loopline-push-checks.yml"
+  push:
+    branches: [feature/browser-push-notifications]
+    paths:
+      - "supabase/functions/send-loopline-push/**"
+      - "supabase/migrations/**"
+      - "index.html"
+      - "sw.js"
+      - ".github/workflows/loopline-push-checks.yml"
+
+jobs:
+  frontend-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Extract inline JavaScript and check syntax
+        run: |
+          python3 - <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+
+          class Scripts(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.inline = False
+                  self.parts = []
+                  self.current = []
+
+              def handle_starttag(self, tag, attrs):
+                  if tag.lower() == "script":
+                      attrs = dict(attrs)
+                      self.inline = "src" not in attrs and attrs.get("type", "").lower() not in ("application/json", "application/ld+json")
+                      self.current = []
+
+              def handle_data(self, data):
+                  if self.inline:
+                      self.current.append(data)
+
+              def handle_endtag(self, tag):
+                  if tag.lower() == "script" and self.inline:
+                      self.parts.append("".join(self.current))
+                      self.inline = False
+
+          parser = Scripts()
+          parser.feed(Path("index.html").read_text(encoding="utf-8"))
+          if not parser.parts:
+              raise SystemExit("No inline JavaScript found in index.html")
+          Path("/tmp/loopline-inline.js").write_text("\\n".join(parser.parts), encoding="utf-8")
+          PY
+          node --check /tmp/loopline-inline.js
+      - name: Check service worker syntax
+        run: node --check sw.js
+
+  edge-function-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type-check push sender
+        run: deno check --config supabase/functions/send-loopline-push/deno.json supabase/functions/send-loopline-push/index.ts

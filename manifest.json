@@ -1,0 +1,10 @@
+{
+  "name": "Loopline",
+  "short_name": "Loopline",
+  "description": "Close every loop — work and life, one follow-up at a time.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F0F2EF",
+  "theme_color": "#B8862E"
+}
