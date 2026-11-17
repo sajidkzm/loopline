@@ -2469,7 +2469,8 @@
 
   function checkLooplineNotifications() {
     if (localStorage.getItem(notificationEnabledKey) !== "true") return;
-    if (currentUser && localStorage.getItem(notificationUserKey) !== currentUser.id) return;
+    var optedInUserId = localStorage.getItem(notificationUserKey);
+    if (optedInUserId && (!currentUser || optedInUserId !== currentUser.id)) return;
     if (!("Notification" in window) || Notification.permission !== "granted") return;
     // Shared workspace tasks have no assignment/ownership model yet. Avoid
     // notifying every team member about another member's shared work.
