@@ -9,8 +9,6 @@ self.addEventListener("push", function(event) {
   var title = payload.title || "Loopline";
   var options = {
     body: payload.body || "You have an update in Loopline.",
-    icon: "./icons/icon-192.png",
-    badge: "./icons/badge-72.png",
     tag: payload.tag || "loopline-update",
     renotify: false,
     data: { url: payload.url || "./" }
