@@ -82,7 +82,8 @@ const defaults=[
 ];
 const roundDefaults=['Main entrance & lobby','Garden / common areas','All guest facilities','Parking areas','Staff attendance & work verification','Back-of-house areas'];
 const equipDefaults=['Walkie-Talkies','Tablet','Power Banks'];
-let state=load();let editing=null;\nif(!state.inbox)state.inbox=[];
+let state=load();let editing=null;
+if(!Array.isArray(state.inbox))state.inbox=[];
 function load(){try{const x=JSON.parse(localStorage.getItem(KEY));if(x)return x}catch(e){}return {tasks:defaults.map((a,i)=>({id:'t'+i,title:a[0],category:a[1],priority:a[2],due:a[3],status:'todo',notes:''})),rounds:roundDefaults.map((name,i)=>({id:'r'+i,name,done:false})),equipment:equipDefaults.map(name=>({name,status:'Check needed'})),breakStart:'02:30',breakDuration:'30',parking:'',history:[]}}
 function save(){localStorage.setItem(KEY,JSON.stringify(state));render()}
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
