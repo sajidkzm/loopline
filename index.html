@@ -817,6 +817,18 @@
     .card-actions .action-more { gap:4px; }
   }
 
+
+  /* Reminder date and time controls */
+  .rem-add { grid-template-columns:minmax(180px,2fr) repeat(3,minmax(110px,1fr)) repeat(2,minmax(145px,1fr)) auto; }
+  .rem-field { display:flex; flex-direction:column; gap:5px; min-width:0; }
+  .rem-field span { color:var(--ink-soft);font-size:10px;font-weight:800;letter-spacing:.04em; }
+  .rem-field input { width:100%;min-width:0;min-height:40px;padding:8px 9px;border:1px solid var(--border);border-radius:9px;background:var(--surface-2);color:var(--ink);font:inherit;font-size:12px; }
+  .rem-edit-datetime { display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0 16px; }
+  .rem-item .rdue { display:flex;flex-direction:column;gap:3px; }
+  .rem-item .rdue-time { font-size:11px;font-weight:700;color:var(--accent-ink); }
+  @media(max-width:1000px) { .rem-add { grid-template-columns:repeat(2,minmax(0,1fr)); } .rem-add #remName,.rem-add #addRemBtn { grid-column:1/-1; } }
+  @media(max-width:520px) { .rem-add { grid-template-columns:1fr; } .rem-add #remName,.rem-add #addRemBtn { grid-column:auto; } .rem-edit-datetime { grid-template-columns:1fr 1fr; } }
+
 </style>
 </head>
 <body>
@@ -945,6 +957,8 @@
         <option value="medium" selected>🟡 Medium</option>
         <option value="low">🟢 Low</option>
       </select>
+      <label class="rem-field"><span>Due date</span><input type="date" id="remDate" aria-label="Reminder due date"></label>
+      <label class="rem-field"><span>Time (optional)</span><input type="time" id="remTime" aria-label="Reminder due time"></label>
       <button class="btn accent" id="addRemBtn">Add reminder</button>
     </div>
     <div class="rem-list" id="remList"></div>
@@ -1029,8 +1043,12 @@
 <div class="modal-overlay" id="editRemModal">
   <div class="modal-box">
     <h3>Edit reminder</h3>
-    <p class="modal-sub">Change the name, category, frequency, or priority.</p>
+    <p class="modal-sub">Change the reminder details, date and time.</p>
     <textarea id="editRemName" style="min-height:44px;" placeholder="Reminder name"></textarea>
+    <div class="rem-edit-datetime">
+      <label class="rem-field"><span>Due date</span><input type="date" id="editRemDate"></label>
+      <label class="rem-field"><span>Time (optional)</span><input type="time" id="editRemTime"></label>
+    </div>
     <div class="modal-label">Category</div>
     <div class="stage-picker" id="editRemCatPicker"></div>
     <div class="modal-label">Frequency</div>
@@ -2277,6 +2295,8 @@
     if (!r) return;
     editRemId = id;
     document.getElementById("editRemName").value = r.name;
+    document.getElementById("editRemDate").value = r.nextDue || todayISO();
+    document.getElementById("editRemTime").value = r.dueTime || "";
     renderPicker("editRemCatPicker", CATEGORIES, r.category);
     renderPicker("editRemFreqPicker", FREQUENCIES, String(r.freqDays));
     renderPicker("editRemPriPicker", PRIORITIES, r.priority || "medium");
@@ -2295,6 +2315,8 @@
     var name = document.getElementById("editRemName").value.trim();
     if (!name) { showToast("Name can't be empty"); return; }
     r.name = name;
+    r.nextDue = document.getElementById("editRemDate").value || r.nextDue || todayISO();
+    r.dueTime = document.getElementById("editRemTime").value || "";
     r.category = document.getElementById("editRemCatPicker").dataset.selected || r.category;
     r.priority = document.getElementById("editRemPriPicker").dataset.selected || r.priority || "medium";
     var newFreq = parseInt(document.getElementById("editRemFreqPicker").dataset.selected || r.freqDays, 10);
@@ -2317,6 +2339,8 @@
   document.getElementById("editRemModal").addEventListener("click", function(e){
     if (e.target === this) closeEditRemModal();
   });
+
+  document.getElementById("remDate").value = todayISO();
 
   var catFilter = "all";
   var sortMode = "recent";
@@ -2531,7 +2555,8 @@
     var cat = document.getElementById("remCategory").value;
     var freqDays = parseInt(document.getElementById("remFreq").value, 10);
     var pri = document.getElementById("remPriority").value;
-    var today = todayISO();
+    var dueDate = document.getElementById("remDate").value || todayISO();
+    var dueTime = document.getElementById("remTime").value || "";
     state.reminders.push({
       id: uid(),
       name: name,
@@ -2539,10 +2564,12 @@
       priority: pri,
       freqDays: freqDays,
       lastDone: null,
-      nextDue: today,
+      nextDue: dueDate,
+      dueTime: dueTime,
       timesDone: 0
     });
     input.value = "";
+    document.getElementById("remTime").value = "";
     saveState();
     renderReminders();
     renderTodayBanner();
@@ -2562,9 +2589,10 @@
     if (!r) return;
     var today = todayISO();
     r.lastDone = today;
-    var d = new Date();
+    var dateParts = today.split("-").map(Number);
+    var d = new Date(dateParts[0], dateParts[1]-1, dateParts[2], 12);
     d.setDate(d.getDate() + r.freqDays);
-    r.nextDue = d.toISOString().slice(0,10);
+    r.nextDue = d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
     r.timesDone = (r.timesDone || 0) + 1;
     recordActivity();
     saveState();
@@ -2603,12 +2631,13 @@
       else { dueText = "Due in " + dueDelta + " day" + (dueDelta===1?"":"s"); }
       var pri = priorityMeta(r.priority || "medium");
 
+      var dueDateLabel = r.nextDue === today ? "Today" : new Date(r.nextDue + "T12:00:00").toLocaleDateString(undefined,{day:"numeric",month:"short",year:"numeric"});
       el.innerHTML =
         '<span class="freq-badge">' + freqLabel(r.freqDays) + '</span>' +
         '<span class="priority-badge ' + pri.id + '">' + pri.label + '</span>' +
         '<span class="tag ' + r.category + '">' + (r.category === "work" ? "WORK" : (activeWorkspaceId ? "PERSONAL · SHARED" : "PERSONAL")) + '</span>' +
         '<span class="rname">' + escapeHtml(r.name) + '</span>' +
-        '<span class="rdue ' + dueClass + '">' + dueText + '</span>' +
+        '<span class="rdue ' + dueClass + '">' + dueText + '<small>' + escapeHtml(dueDateLabel) + (r.dueTime ? '<span class="rdue-time">' + escapeHtml(r.dueTime) + '</span>' : '') + '</small></span>' +
         '<button class="donebtn">Mark done</button>' +
         '<button class="delbtn edit-rem-btn">Edit</button>' +
         '<button class="delbtn">Remove</button>';
