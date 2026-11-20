@@ -692,6 +692,99 @@
     }
   }
 
+
+  /* Professional navy + teal visual system */
+  :root {
+    --bg:#F4F7FA; --surface:#FFFFFF; --surface-2:#EDF2F6;
+    --ink:#172B3A; --ink-soft:#536777; --ink-faint:#8293A1;
+    --border:#DCE5EC; --accent:#167C78; --accent-ink:#105E5A;
+    --accent-soft:#E2F2F0; --radius:14px;
+    --shadow:0 1px 2px rgba(20,42,58,.035),0 8px 24px rgba(20,42,58,.06);
+    color-scheme:light;
+  }
+  :root[data-theme="dark"] {
+    --bg:#101B27; --surface:#172635; --surface-2:#203344;
+    --ink:#EDF4F8; --ink-soft:#B5C5D0; --ink-faint:#8398A8;
+    --border:#304657; --accent:#55B9AE; --accent-ink:#B9E8E2;
+    --accent-soft:#1D3D40; --shadow:0 2px 5px rgba(0,0,0,.2),0 10px 28px rgba(0,0,0,.18);
+    color-scheme:dark;
+  }
+  @media(prefers-color-scheme:dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#101B27; --surface:#172635; --surface-2:#203344;
+      --ink:#EDF4F8; --ink-soft:#B5C5D0; --ink-faint:#8398A8;
+      --border:#304657; --accent:#55B9AE; --accent-ink:#B9E8E2;
+      --accent-soft:#1D3D40; --shadow:0 2px 5px rgba(0,0,0,.2),0 10px 28px rgba(0,0,0,.18);
+      color-scheme:dark;
+    }
+  }
+  body { letter-spacing:-.01em; }
+  .app { max-width:1260px; padding-top:30px; }
+  header.top { align-items:center; margin-bottom:22px; }
+  .brand h1 { font-size:31px; letter-spacing:-.045em; }
+  .brand .mark { width:11px;height:11px;background:var(--accent);box-shadow:0 0 0 5px var(--accent-soft);margin-right:12px; }
+  .brand p { font-size:13px; }
+  nav.tabs { background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:4px;gap:3px; }
+  nav.tabs button { border-radius:9px;padding:10px 14px;font-size:13px; }
+  nav.tabs button.active { background:var(--surface);color:var(--accent-ink);box-shadow:0 2px 8px rgba(20,42,58,.09); }
+  .account-btn,.theme-toggle { border-radius:9px;transition:background .18s,border-color .18s,transform .18s; }
+  .welcome-panel { position:relative;overflow:hidden;background:linear-gradient(115deg,var(--surface) 0%,var(--accent-soft) 100%);border-color:var(--border);border-radius:18px;padding:25px 28px; }
+  .welcome-panel:after { content:"";position:absolute;width:190px;height:190px;border:28px solid rgba(22,124,120,.055);border-radius:50%;right:8%;top:-105px;pointer-events:none; }
+  .welcome-eyebrow,.view-kicker { color:var(--accent-ink);font-size:10px;font-weight:800;letter-spacing:.14em; }
+  .welcome-title { letter-spacing:-.045em; }
+  .welcome-date { background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 13px; }
+  .view-heading { display:flex;align-items:center;justify-content:space-between;gap:16px;margin:4px 0 18px; }
+  .view-heading h2 { margin:2px 0 4px;font-size:23px;letter-spacing:-.04em; }
+  .view-heading p { margin:0;color:var(--ink-soft);font-size:13px;line-height:1.5; }
+  .view-heading .view-kicker { margin-bottom:5px;color:var(--accent);font-size:10px;font-weight:800;letter-spacing:.13em; }
+  .view-heading .view-hint { color:var(--ink-faint);font-size:11px;font-weight:700;background:var(--surface-2);border:1px solid var(--border);padding:8px 11px;border-radius:9px;white-space:nowrap; }
+  .today-stat { border-radius:15px;position:relative;overflow:hidden;transition:transform .18s,border-color .18s,box-shadow .18s; }
+  .today-stat:before { content:"";position:absolute;left:0;top:14px;bottom:14px;width:3px;border-radius:0 4px 4px 0;background:var(--accent); }
+  .today-stat:hover,.today-section:hover,.stat:hover { transform:translateY(-2px);border-color:var(--accent);box-shadow:0 10px 28px rgba(20,42,58,.08); }
+  .today-section { border-radius:15px;padding:19px; }
+  .today-task { padding:13px 2px; }
+  .today-task button { background:var(--accent-soft);color:var(--accent-ink);border-color:transparent;min-height:34px; }
+  .today-task button:hover { background:var(--accent);color:white; }
+  .quickadd,.rem-add,.reward-add { border-color:var(--border);border-radius:14px; }
+  .btn { border-radius:9px;transition:transform .16s,filter .16s,box-shadow .16s; }
+  .btn.accent { background:var(--accent);color:#fff;box-shadow:0 3px 9px rgba(22,124,120,.16); }
+  .btn:hover { filter:brightness(1.04);transform:translateY(-1px); }
+  .btn.accent:hover { box-shadow:0 6px 15px rgba(22,124,120,.2); }
+  input,select,textarea { border-radius:9px; }
+  input:focus,select:focus,textarea:focus { border-color:var(--accent)!important;box-shadow:0 0 0 3px var(--accent-soft);outline:none; }
+  .search-wrap input { min-height:44px;border-radius:11px; }
+  .col { border:1px solid var(--border);background:var(--surface-2);border-radius:14px;padding:13px; }
+  .col .col-head { padding:5px 5px 13px; }
+  .card { border:1px solid var(--border);border-left:3px solid var(--accent);transition:transform .16s,box-shadow .16s; }
+  .card:hover { transform:translateY(-2px);box-shadow:0 8px 20px rgba(20,42,58,.09); }
+  .card .actions button { transition:background .15s,color .15s,border-color .15s; }
+  .card .actions button:hover,.account-btn:hover,.theme-toggle:hover { background:var(--accent-soft);color:var(--accent-ink);border-color:var(--accent-soft); }
+  .priority-badge.high { background:#FCE9E6;color:#A63D32; }
+  .priority-badge.medium { background:#F8F0DE;color:#8A641C; }
+  .priority-badge.low { background:#E5F2EB;color:#276B4A; }
+  .tag.work { background:#E8EEF8;color:#345A91; }
+  .tag.personal { background:#E1F2EF;color:#176D66; }
+  .rem-item,.reward,.badge,.stat { border-color:var(--border);transition:transform .18s,box-shadow .18s; }
+  .rem-item:hover,.reward:hover,.badge:hover { transform:translateY(-1px);box-shadow:var(--shadow); }
+  .activity-list { border-radius:14px; }
+  button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible { outline:3px solid var(--accent);outline-offset:2px; }
+  @media(max-width:700px) {
+    .app { padding:16px 13px 70px; }
+    .brand h1 { font-size:28px; }
+    .welcome-panel { padding:20px; }
+    .view-heading { align-items:flex-start;flex-direction:column;gap:8px; }
+    .view-heading h2 { font-size:21px; }
+    .view-heading .view-hint { display:none; }
+    nav.tabs { justify-content:flex-start; }
+    nav.tabs button { flex:0 0 auto;padding:10px 13px; }
+    .today-section { padding:15px; }
+    .today-task { align-items:flex-start; }
+    .today-task button { flex:none; }
+  }
+  @media(prefers-reduced-motion:reduce) {
+    *,*:before,*:after { scroll-behavior:auto!important;transition:none!important;animation:none!important; }
+  }
+
 </style>
 </head>
 <body>
@@ -706,7 +799,7 @@
       <nav class="tabs" id="tabs">
         <button data-view="today" class="active">Today</button>
         <button data-view="board">All loops</button>
-        <button data-view="reminders">Repeat</button>
+        <button data-view="reminders">Reminders</button>
         <button data-view="activity">History</button>
         <button data-view="scorecard">Weekly</button>
       </nav>
@@ -744,6 +837,7 @@
   </section>
   <!-- BOARD VIEW -->
   <section class="view" id="view-board">
+    <div class="view-heading"><div><p class="view-kicker">YOUR WORKSPACE</p><h2>All loops</h2><p>Keep every follow-up visible and moving forward.</p></div><span class="view-hint">Organise · Update · Close</span></div>
     <div class="today-banner" id="todayBanner"></div>
     <section id="notificationPanel" style="margin:0 0 18px;padding:14px 16px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;">
       <div style="min-width:220px;flex:1;">
@@ -801,6 +895,7 @@
 
   <!-- REMINDERS VIEW -->
   <section class="view" id="view-reminders">
+    <div class="view-heading"><div><p class="view-kicker">STAY CONSISTENT</p><h2>Recurring reminders</h2><p>Set it once. Loopline helps you remember it again.</p></div></div>
     <div class="rem-add">
       <input type="text" id="remName" placeholder="Reminder — e.g. Pay credit card bill">
       <select id="remCategory" class="pill">
@@ -825,11 +920,12 @@
 
   <!-- ACTIVITY HISTORY -->
   <section class="view" id="view-activity">
+    <div class="view-heading"><div><p class="view-kicker">YOUR TIMELINE</p><h2>Activity history</h2><p>See what changed and when.</p></div></div>
     <section class="today-section"><h3>Your recent activity</h3><p class="weekly-note">A timeline of loops you've added, updated and completed.</p><div class="activity-list" id="activityList"></div></section>
   </section>
   <!-- SCORECARD VIEW -->
   <section class="view" id="view-scorecard">
-    <p class="weekly-note">Your last seven days at a glance. Keep closing loops, one step at a time.</p>
+    <div class="view-heading"><div><p class="view-kicker">YOUR MOMENTUM</p><h2>Weekly progress</h2><p>Your last seven days at a glance. Small steps add up.</p></div></div>
     <div class="score-grid">
       <div class="stat"><div class="num display" id="statPoints">0</div><div class="lbl">Total points</div></div>
       <div class="stat"><div class="num display" id="statClosed">0</div><div class="lbl">Loops closed</div></div>
