@@ -111,6 +111,40 @@
     min-height: 100vh;
   }
   .display { font-family: 'Fraunces', Georgia, serif; }
+  /* Modern, mobile-first refresh */
+  .app { max-width:1240px; padding:24px 22px 88px; }
+  .today-dashboard { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:20px; }
+  .today-stat,.today-section { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:16px; box-shadow:var(--shadow); }
+  .today-stat span { display:block; color:var(--ink-soft); font-size:12px; font-weight:600; }
+  .today-stat strong { display:block; font-size:28px; margin-top:5px; }
+  .today-section { margin-bottom:16px; }
+  .today-section h3 { margin:0 0 12px; font-size:15px; }
+  .today-task { display:flex; align-items:center; gap:10px; padding:11px 0; border-top:1px solid var(--border); }
+  .today-task .task-copy { flex:1; min-width:0; }
+  .today-task strong { display:block; font-size:13.5px; overflow-wrap:anywhere; }
+  .today-task small { display:block; color:var(--ink-soft); margin-top:3px; font-size:11.5px; }
+  .today-task button,.snooze-btn { border:1px solid var(--border); border-radius:8px; padding:7px 10px; background:var(--surface-2); color:var(--ink); font-size:12px; font-weight:700; }
+  .search-wrap { display:flex; gap:9px; margin-bottom:14px; }
+  .search-wrap input { flex:1; min-width:0; border:1px solid var(--border); background:var(--surface); color:var(--ink); border-radius:10px; padding:12px 14px; font-size:14px; }
+  .activity-list { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:4px 16px; }
+  .activity-entry { padding:13px 0; border-bottom:1px solid var(--border); font-size:13px; }
+  .activity-entry:last-child { border-bottom:0; }
+  .activity-entry small,.weekly-note { display:block; color:var(--ink-soft); margin-top:4px; font-size:12px; }
+  @media(max-width:700px) {
+    .app { padding:16px 13px 90px; }
+    header.top { align-items:flex-start; gap:12px; }
+    header.top>div:last-child { width:100%; flex-wrap:wrap; }
+    nav.tabs { width:100%; overflow-x:auto; }
+    nav.tabs button { padding:9px 12px; font-size:12px; white-space:nowrap; }
+    .today-dashboard { grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; }
+    .today-stat { padding:13px; }
+    .today-stat strong { font-size:24px; }
+    .quickadd input[type=text] { flex-basis:100%; }
+    .quickadd select { flex:1; }
+    .quickadd .btn { width:100%; }
+    .rem-item { flex-wrap:wrap; gap:8px; }
+    .rem-item .rname { flex-basis:100%; }
+  }
 
   ::selection { background: var(--accent-soft); }
 
@@ -670,9 +704,11 @@
     </div>
     <div style="display:flex; gap:10px; align-items:center;">
       <nav class="tabs" id="tabs">
-        <button data-view="board" class="active">Board</button>
-        <button data-view="reminders">Reminders</button>
-        <button data-view="scorecard">Scorecard</button>
+        <button data-view="today" class="active">Today</button>
+        <button data-view="board">All loops</button>
+        <button data-view="reminders">Repeat</button>
+        <button data-view="activity">History</button>
+        <button data-view="scorecard">Weekly</button>
       </nav>
       <div class="account-area">
         <span class="account-status" id="accountStatus">Local mode</span>
@@ -694,8 +730,20 @@
   </section>
 
 
+  <!-- TODAY DASHBOARD -->
+  <section class="view active" id="view-today">
+    <div class="today-dashboard" id="todayDashboard"></div>
+    <section class="today-section"><h3>Today's focus</h3><div id="todayTasks"></div></section>
+    <section class="today-section"><h3>Quick add a loop</h3>
+      <div class="quickadd" style="margin:0;box-shadow:none;padding:0;border:0;">
+        <input type="text" id="todayTaskInput" placeholder="What do you need to follow up?">
+        <select id="todayTaskCategory" class="pill"><option value="work">Work</option><option value="personal">Personal</option></select>
+        <button class="btn accent" id="todayAddTaskBtn">Add loop</button>
+      </div>
+    </section>
+  </section>
   <!-- BOARD VIEW -->
-  <section class="view active" id="view-board">
+  <section class="view" id="view-board">
     <div class="today-banner" id="todayBanner"></div>
     <section id="notificationPanel" style="margin:0 0 18px;padding:14px 16px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;">
       <div style="min-width:220px;flex:1;">
@@ -734,6 +782,7 @@
       <button class="btn accent" id="addTaskBtn">Add loop</button>
     </div>
 
+    <div class="search-wrap"><input type="search" id="taskSearch" placeholder="Search loops and notes…" aria-label="Search loops and notes"></div>
     <div class="filters">
       <div class="seg" id="catFilter">
         <button data-cat="all" class="active">All</button>
@@ -774,8 +823,13 @@
     <div class="rem-list" id="remList"></div>
   </section>
 
+  <!-- ACTIVITY HISTORY -->
+  <section class="view" id="view-activity">
+    <section class="today-section"><h3>Your recent activity</h3><p class="weekly-note">A timeline of loops you've added, updated and completed.</p><div class="activity-list" id="activityList"></div></section>
+  </section>
   <!-- SCORECARD VIEW -->
   <section class="view" id="view-scorecard">
+    <p class="weekly-note">Your last seven days at a glance. Keep closing loops, one step at a time.</p>
     <div class="score-grid">
       <div class="stat"><div class="num display" id="statPoints">0</div><div class="lbl">Total points</div></div>
       <div class="stat"><div class="num display" id="statClosed">0</div><div class="lbl">Loops closed</div></div>
@@ -1820,6 +1874,8 @@
       document.getElementById("view-" + btn.dataset.view).classList.add("active");
       if (btn.dataset.view === "scorecard") renderScorecard();
       if (btn.dataset.view === "reminders") renderReminders();
+      if (btn.dataset.view === "today") renderTodayDashboard();
+      if (btn.dataset.view === "activity") renderActivityHistory();
     });
   });
 
@@ -1843,6 +1899,7 @@
       stage: "started",
       createdAt: todayISO(),
       closedAt: null,
+      snoozedUntil: null,
       notes: []
     });
     input.value = "";
@@ -1850,6 +1907,8 @@
     saveState();
     renderBoard();
     renderTodayBanner();
+    renderTodayDashboard();
+    renderActivityHistory();
     showToast("Loop added");
   }
 
@@ -1873,6 +1932,7 @@
     if (!t) return;
     var wasClosed = t.stage === "closed";
     t.stage = newStage;
+    t.lastUpdatedAt = todayISO();
     if (newStage === "closed" && !wasClosed) {
       t.closedAt = todayISO();
       recordActivity();
@@ -1882,6 +1942,8 @@
     }
     saveState();
     renderBoard();
+    renderTodayDashboard();
+    renderActivityHistory();
   }
 
   // ---------- FOLLOW-UP MODAL ----------
@@ -1947,6 +2009,7 @@
     var note = document.getElementById("followupNoteInput").value.trim();
     var newStage = document.getElementById("stagePicker").dataset.selected || t.stage;
     if (note) t.notes.push({ text: note, date: todayISO() });
+    t.lastUpdatedAt = todayISO();
     var wasClosed = t.stage === "closed";
     t.stage = newStage;
     if (newStage === "closed" && !wasClosed) {
@@ -1960,6 +2023,8 @@
     recordActivity();
     saveState();
     renderBoard();
+    renderTodayDashboard();
+    renderActivityHistory();
     closeFollowupModal();
   }
 
@@ -2128,6 +2193,15 @@
   var catFilter = "all";
   var sortMode = "recent";
 
+  var taskSearch=document.getElementById("taskSearch");
+  if(taskSearch)taskSearch.addEventListener("input",renderBoard);
+  document.getElementById("todayAddTaskBtn").addEventListener("click",function(){
+    var input=document.getElementById("todayTaskInput"),title=input.value.trim();if(!title){input.focus();return;}
+    state.tasks.unshift({id:uid(),title:title,category:document.getElementById("todayTaskCategory").value,priority:"medium",stage:"started",createdAt:todayISO(),closedAt:null,snoozedUntil:null,notes:[]});
+    input.value="";recordActivity();saveState();renderBoard();renderTodayDashboard();renderActivityHistory();showToast("Loop added");
+  });
+  document.getElementById("todayTaskInput").addEventListener("keydown",function(e){if(e.key==="Enter")document.getElementById("todayAddTaskBtn").click();});
+
   document.querySelectorAll("#sortFilter button").forEach(function(btn){
     btn.addEventListener("click", function(){
       document.querySelectorAll("#sortFilter button").forEach(function(b){ b.classList.remove("active"); });
@@ -2146,8 +2220,12 @@
   function renderBoard() {
     var board = document.getElementById("board");
     board.innerHTML = "";
+    var query = (document.getElementById("taskSearch") && document.getElementById("taskSearch").value || "").trim().toLowerCase();
     var visible = state.tasks.filter(function(t){
-      return catFilter === "all" || t.category === catFilter;
+      var matchesCategory = catFilter === "all" || t.category === catFilter;
+      var matchesSearch = !query || (t.title || "").toLowerCase().includes(query) ||
+        (t.notes || []).some(function(n){ return (n.text || "").toLowerCase().includes(query); });
+      return matchesCategory && matchesSearch;
     });
     var openCount = visible.filter(function(t){ return t.stage !== "closed"; }).length;
     document.getElementById("openCount").textContent = openCount + " open loop" + (openCount === 1 ? "" : "s");
@@ -2221,6 +2299,7 @@
     } else {
       html += '<button class="reopen-btn">Reopen</button>';
     }
+    if (stageId !== "closed") html += '<button class="snooze-btn">Snooze 1 day</button>';
     html += '<button class="edit-btn">Edit</button>';
     html += '<button class="del">Remove</button>';
     html += '</div>';
@@ -2230,6 +2309,8 @@
     var followupBtn = card.querySelector(".followup-btn");
     if (followupBtn) followupBtn.addEventListener("click", function(){ addFollowup(t.id); });
 
+    var snoozeBtn = card.querySelector(".snooze-btn");
+    if (snoozeBtn) snoozeBtn.addEventListener("click", function(){ snoozeTask(t.id); });
     card.querySelector(".edit-btn").addEventListener("click", function(){ openEditTaskModal(t.id); });
 
     var advanceBtn = card.querySelector(".advance-btn");
@@ -2244,6 +2325,60 @@
     card.querySelector(".del").addEventListener("click", function(){ deleteTask(t.id); });
 
     return card;
+  }
+
+  function snoozeTask(id) {
+    var task = state.tasks.find(function(item){ return item.id === id; });
+    if (!task) return;
+    var until = new Date(); until.setDate(until.getDate()+1);
+    task.snoozedUntil = until.getFullYear()+"-"+String(until.getMonth()+1).padStart(2,"0")+"-"+String(until.getDate()).padStart(2,"0");
+    task.lastUpdatedAt = todayISO();
+    saveState(); renderBoard(); renderTodayDashboard(); renderActivityHistory();
+    showToast("Loop snoozed until tomorrow");
+  }
+
+  function renderTodayDashboard() {
+    var today=todayISO(), active=state.tasks.filter(function(t){return t.stage!=="closed";});
+    var visible=active.filter(function(t){return !t.snoozedUntil || t.snoozedUntil<=today;});
+    var overdue=visible.filter(function(t){return t.createdAt && daysBetween(t.createdAt,today)>=7;});
+    var closedToday=state.tasks.filter(function(t){return t.stage==="closed" && t.closedAt===today;});
+    var dueReminders=state.reminders.filter(function(r){return r.nextDue && r.nextDue<=today;});
+    var stats=document.getElementById("todayDashboard"), tasks=document.getElementById("todayTasks");
+    if(!stats||!tasks)return;
+    stats.innerHTML=[["Open loops",active.length],["Needs attention",overdue.length],["Reminders due",dueReminders.length],["Closed today",closedToday.length]]
+      .map(function(x){return '<div class="today-stat"><span>'+x[0]+'</span><strong>'+x[1]+'</strong></div>';}).join("");
+    var focus=visible.slice().sort(function(a,b){var w={high:3,medium:2,low:1};return (w[b.priority||"medium"]||2)-(w[a.priority||"medium"]||2);}).slice(0,8);
+    tasks.innerHTML="";
+    if(!focus.length){tasks.innerHTML='<p class="weekly-note">You’re all caught up. Add a loop whenever something needs your attention.</p>';}
+    else focus.forEach(function(t){
+      var row=document.createElement("div");row.className="today-task";
+      var copy=document.createElement("div");copy.className="task-copy";
+      var strong=document.createElement("strong");strong.textContent=t.title;
+      var small=document.createElement("small");small.textContent=(t.category==="work"?"Work":"Personal")+" · "+(t.priority||"medium")+" priority";
+      copy.appendChild(strong);copy.appendChild(small);
+      var done=document.createElement("button");done.type="button";done.textContent="Complete";done.addEventListener("click",function(){moveTask(t.id,"closed");});
+      row.appendChild(copy);row.appendChild(done);tasks.appendChild(row);
+    });
+    if(dueReminders.length){var p=document.createElement("p");p.className="weekly-note";p.textContent=dueReminders.length+" recurring reminder"+(dueReminders.length===1?"":"s")+" due. Open Repeat to review.";tasks.appendChild(p);}
+  }
+
+  function renderActivityHistory() {
+    var target=document.getElementById("activityList");if(!target)return;
+    var events=[];
+    (state.tasks||[]).forEach(function(t){
+      if(t.createdAt)events.push({date:t.createdAt,text:"Added loop: "+t.title});
+      if(t.closedAt)events.push({date:t.closedAt,text:"Completed loop: "+t.title});
+      (t.notes||[]).forEach(function(n){events.push({date:n.date||t.lastUpdatedAt||t.createdAt,text:"Update on "+t.title+": "+n.text});});
+    });
+    events.sort(function(a,b){return (b.date||"").localeCompare(a.date||"");});
+    target.innerHTML="";
+    if(!events.length){target.textContent="Your activity will appear here as you add and update loops.";return;}
+    events.slice(0,40).forEach(function(item){
+      var el=document.createElement("div");el.className="activity-entry";
+      var body=document.createElement("div");body.textContent=item.text;
+      var date=document.createElement("small");date.textContent=item.date||"Date unavailable";
+      el.appendChild(body);el.appendChild(date);target.appendChild(el);
+    });
   }
 
   function escapeHtml(s) {
@@ -2756,6 +2891,8 @@
   renderReminders();
   renderScorecard();
   renderTodayBanner();
+  renderTodayDashboard();
+  renderActivityHistory();
 
 })();
 </script>
