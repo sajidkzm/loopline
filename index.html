@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <link rel="manifest" href="./manifest.json">
 <title>Loopline</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -828,6 +828,44 @@
   .rem-item .rdue-time { font-size:11px;font-weight:700;color:var(--accent-ink); }
   @media(max-width:1000px) { .rem-add { grid-template-columns:repeat(2,minmax(0,1fr)); } .rem-add #remName,.rem-add #addRemBtn { grid-column:1/-1; } }
   @media(max-width:520px) { .rem-add { grid-template-columns:1fr; } .rem-add #remName,.rem-add #addRemBtn { grid-column:auto; } .rem-edit-datetime { grid-template-columns:1fr 1fr; } }
+
+
+  /* Smartphone finishing: prevent sideways scrolling and make controls comfortable to tap. */
+  @media (max-width: 700px) {
+    html, body { width: 100%; overflow-x: hidden; }
+    body { -webkit-text-size-adjust: 100%; }
+    .app { width: 100%; max-width: 100%; padding-left: 12px; padding-right: 12px; padding-bottom: calc(28px + env(safe-area-inset-bottom)); }
+    header.top { min-width: 0; }
+    header.top > div:last-child { min-width: 0; }
+    nav.tabs { max-width: 100%; justify-content: flex-start; scrollbar-width: thin; }
+    nav.tabs button { flex: 0 0 auto; min-height: 44px; }
+    .account-area { display: flex; flex-wrap: wrap; gap: 6px; }
+    .quickadd, .rem-add, .reward-add { width: 100%; min-width: 0; }
+    .quickadd input, .quickadd select, .quickadd button,
+    .rem-add input, .rem-add select, .rem-add button,
+    .reward-add input, .reward-add button { min-width: 0; width: 100%; min-height: 44px; font-size: 16px; }
+    input, select, textarea { max-width: 100%; font-size: 16px; }
+    .filters { gap: 7px; }
+    .filters .seg { max-width: 100%; overflow-x: auto; }
+    .filters .seg button { min-height: 42px; white-space: nowrap; }
+    .card .actions button, .today-task button, .rem-item button,
+    .reward button, .theme-toggle, .account-btn { min-height: 40px; }
+    .rem-item { width: 100%; min-width: 0; }
+    .rem-item .rdue { white-space: normal; }
+    .reward { min-width: 0; }
+    .reward .rtitle { min-width: 100px; overflow-wrap: anywhere; }
+    .modal-overlay { padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom)); }
+    .modal-box { width: 100%; max-width: 100%; }
+    .modal-actions { flex-wrap: wrap; }
+    .modal-actions button { flex: 1 1 120px; min-height: 44px; }
+  }
+  @media (max-width: 380px) {
+    .brand h1 { font-size: 26px; }
+    .brand p { font-size: 13px; }
+    .today-dashboard { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .today-stat strong { font-size: 22px; }
+    nav.tabs button { padding-left: 11px; padding-right: 11px; }
+  }
 
 </style>
 </head>
