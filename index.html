@@ -785,6 +785,38 @@
     *,*:before,*:after { scroll-behavior:auto!important;transition:none!important;animation:none!important; }
   }
 
+
+  /* Clear task actions: one obvious next step, secondary tools below */
+  .card { padding:16px; border-radius:13px; }
+  .card .card-top { gap:10px; }
+  .card h4 { font-size:14px; line-height:1.45; color:var(--ink); }
+  .card .meta { display:flex; align-items:center; gap:6px; font-size:11.5px; margin-top:8px; }
+  .card-actions { display:flex; flex-direction:column; gap:8px; margin-top:14px; }
+  .card-actions .action-main { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
+  .card-actions .action-more { display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding-top:7px; border-top:1px solid var(--border); }
+  .card-actions button {
+    min-height:36px; padding:8px 10px; border:1px solid var(--border);
+    border-radius:8px; background:var(--surface-2); color:var(--ink-soft);
+    font:700 11.5px/1.2 inherit; cursor:pointer; transition:background .15s,color .15s,border-color .15s,transform .15s;
+  }
+  .card-actions button:hover { transform:translateY(-1px); border-color:var(--accent); }
+  .card-actions .action-main .primary {
+    background:var(--accent); color:#fff; border-color:var(--accent);
+    box-shadow:0 2px 6px rgba(22,124,120,.16);
+  }
+  .card-actions .action-main .followup-btn { background:var(--surface); color:var(--accent-ink); border-color:var(--border); }
+  .card-actions .action-more button { min-height:30px; padding:6px 8px; font-size:10.5px; background:transparent; }
+  .card-actions .action-more .del { margin-left:auto; color:#A6534B; }
+  .card-actions .action-more .snooze-btn { color:var(--ink-soft); }
+  .card-actions .reopen-btn { width:100%; background:var(--accent-soft); color:var(--accent-ink); border-color:var(--accent-soft); }
+  .card.stage-closed { opacity:.82; }
+  @media(max-width:520px) {
+    .card { padding:14px; }
+    .card-actions .action-main { grid-template-columns:1fr; }
+    .card-actions .action-main button { min-height:40px; }
+    .card-actions .action-more { gap:4px; }
+  }
+
 </style>
 </head>
 <body>
@@ -2385,19 +2417,22 @@
       html += '<div class="lastnote">"' + escapeHtml(lastNote.text) + '" — ' + lastNote.date + '</div>';
     }
 
-    html += '<div class="actions">';
+    html += '<div class="card-actions">';
     if (stageId !== "closed") {
-      html += '<button class="followup-btn">+ Follow-up</button>';
-      html += '<button class="primary advance-btn">' + (stageId === "followup" ? "Move to Closed" : "Advance") + '</button>';
-      if (stageId !== "followup") {
-        html += '<button class="close-btn close-direct">Close</button>';
-      }
+      var next = STAGES.find(function(item){ return item.id === nextStage(stageId); });
+      html += '<div class="action-main">';
+      html += '<button class="primary advance-btn">' + (next ? 'Move to ' + next.label : 'Advance') + '</button>';
+      html += '<button class="followup-btn">Add update</button>';
+      html += '</div>';
+      html += '<div class="action-more">';
+      html += '<button class="snooze-btn">Snooze until tomorrow</button>';
+      html += '<button class="edit-btn">Edit</button>';
+      html += '<button class="del">Remove</button>';
+      html += '</div>';
     } else {
-      html += '<button class="reopen-btn">Reopen</button>';
+      html += '<div class="action-main"><button class="primary reopen-btn">Reopen loop</button></div>';
+      html += '<div class="action-more"><button class="edit-btn">Edit</button><button class="del">Remove</button></div>';
     }
-    if (stageId !== "closed") html += '<button class="snooze-btn">Snooze 1 day</button>';
-    html += '<button class="edit-btn">Edit</button>';
-    html += '<button class="del">Remove</button>';
     html += '</div>';
 
     card.innerHTML = html;
